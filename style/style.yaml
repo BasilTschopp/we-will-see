@@ -1,0 +1,29 @@
+# Tkinter does not support CSS. This YAML file serves as
+# the central style configuration for the application.
+ 
+colors:
+  bg: "#f2f3f5"
+  bg2: "#ffffff"
+  fg: "#2c3e50"
+  fg_sec: "#8899a6"
+  accent: "#4db6a0"
+  red: "#d47272"
+  border: "#dfe3e8"
+  sel: "#e0f2ef"
+ 
+nav:
+  bg: "#34495e"
+  fg: "#94a3b8"
+  active_bg: "#4db6a0"
+  active_fg: "#ffffff"
+ 
+sub:
+  bg: "#f2f3f5"
+  sel_bg: "#4db6a0"
+  sel_fg: "#ffffff"
+ 
+fonts:
+  ui: "Segoe UI"
+  ui_mac: "SF Pro Text"
+  mono: "Cascadia Code"
+  mono_mac: "SF Mono"
