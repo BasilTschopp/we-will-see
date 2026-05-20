@@ -7,7 +7,7 @@ from tkinter import ttk, messagebox, simpledialog, filedialog
 import yaml
 
 from models import log, NavigationResult
-from browser import setup_logging, run_test, quit_browser
+from browser import setup_logging, run_test, run_record, quit_browser
 from testcases import TESTCASES_DIR
 
 
@@ -77,6 +77,7 @@ class BugulaApp:
 
         self.running = False
         self.driver = None
+        self.recorder = None
         self.results: list[NavigationResult] = []
 
         self._current_section = "testing"
@@ -136,7 +137,8 @@ class BugulaApp:
         tk.Frame(self.nav_frame, bg=NAV_BG, height=12).pack()
 
         for key, label in [("testing", "Testing"),
-                           ("results", "Results")]:
+                            ("record",  "Record"),
+                            ("results", "Results")]:
             btn = tk.Label(
                 self.nav_frame, text=label, bg=NAV_BG, fg=NAV_FG,
                 font=(FONT, 11), anchor="w", padx=16, pady=10,
@@ -162,7 +164,12 @@ class BugulaApp:
         self._build_sub_testing()
         self._build_sub_results()
         self._build_content_testing()
+        self._build_content_record()
         self._build_content_results()
+
+    # ------------------------------------------------------------------
+    # Sub-panels
+    # ------------------------------------------------------------------
 
     def _build_sub_testing(self):
         self.sub_testing = tk.Frame(self.sub_container, bg=SUB_BG)
@@ -216,6 +223,10 @@ class BugulaApp:
                  cursor="hand2").pack(side=tk.LEFT)
         bar.winfo_children()[-1].bind("<Button-1>",
                                        lambda e: self._on_delete_result())
+
+    # ------------------------------------------------------------------
+    # Content panels
+    # ------------------------------------------------------------------
 
     def _build_content_testing(self):
         self.content_testing = tk.Frame(self.content_frame, bg=BG)
@@ -276,26 +287,103 @@ class BugulaApp:
         editor_sb.pack(side=tk.RIGHT, fill=tk.Y)
         self.editor.configure(yscrollcommand=editor_sb.set)
 
-    @staticmethod
-    def _add_tooltip(widget, text):
-        tip = None
+    def _build_content_record(self):
+        """Record section – form + start/stop controls."""
+        self.content_record = tk.Frame(self.content_frame, bg=BG)
 
-        def show(event):
-            nonlocal tip
-            tip = tk.Toplevel(widget)
-            tip.wm_overrideredirect(True)
-            tip.wm_geometry(f"+{event.x_root + 10}+{event.y_root + 10}")
-            tk.Label(tip, text=text, bg="#333", fg="#fff",
-                     font=("Segoe UI", 9), padx=6, pady=3).pack()
+        outer = tk.Frame(self.content_record, bg=BG)
+        outer.pack(fill=tk.BOTH, expand=True, padx=32, pady=24)
 
-        def hide(event):
-            nonlocal tip
-            if tip:
-                tip.destroy()
-                tip = None
+        # Title
+        tk.Label(outer, text="Record Session", bg=BG, fg=FG,
+                 font=(FONT, 13, "bold"), anchor="w").pack(
+            fill=tk.X, pady=(0, 16))
 
-        widget.bind("<Enter>", show)
-        widget.bind("<Leave>", hide)
+        # Helper to build a labelled row
+        def _row(parent, label_text):
+            row = tk.Frame(parent, bg=BG)
+            row.pack(fill=tk.X, pady=4)
+            tk.Label(row, text=label_text, bg=BG, fg=FG_SEC,
+                     font=(FONT, 9), width=14, anchor="w").pack(side=tk.LEFT)
+            return row
+
+        # URL
+        r = _row(outer, "URL *")
+        self._rec_url = tk.StringVar()
+        ttk.Entry(r, textvariable=self._rec_url).pack(
+            side=tk.LEFT, fill=tk.X, expand=True)
+
+        # Testcase name
+        r = _row(outer, "Save as")
+        self._rec_name = tk.StringVar(value="recording")
+        ttk.Entry(r, textvariable=self._rec_name).pack(
+            side=tk.LEFT, fill=tk.X, expand=True)
+
+        # Browser
+        r = _row(outer, "Browser")
+        self._rec_browser = tk.StringVar(value="chrome")
+        browser_frame = tk.Frame(r, bg=BG)
+        browser_frame.pack(side=tk.LEFT)
+        for b in ("chrome", "edge", "firefox"):
+            tk.Radiobutton(
+                browser_frame, text=b.capitalize(),
+                variable=self._rec_browser, value=b,
+                bg=BG, fg=FG, selectcolor=BG,
+                activebackground=BG, activeforeground=ACCENT,
+                font=(FONT, 10)).pack(side=tk.LEFT, padx=(0, 10))
+
+        # Private mode
+        r = _row(outer, "")
+        self._rec_private = tk.BooleanVar(value=False)
+        tk.Checkbutton(
+            r, text="Private / Incognito mode",
+            variable=self._rec_private,
+            bg=BG, fg=FG, selectcolor=BG,
+            activebackground=BG, activeforeground=ACCENT,
+            font=(FONT, 10)).pack(side=tk.LEFT)
+
+        # Username / Password (optional)
+        tk.Frame(outer, bg=BORDER, height=1).pack(fill=tk.X, pady=12)
+        tk.Label(outer, text="Login (optional)", bg=BG, fg=FG_SEC,
+                 font=(FONT, 9, "italic"), anchor="w").pack(fill=tk.X)
+
+        r = _row(outer, "Username")
+        self._rec_user = tk.StringVar()
+        ttk.Entry(r, textvariable=self._rec_user).pack(
+            side=tk.LEFT, fill=tk.X, expand=True)
+
+        r = _row(outer, "Password")
+        self._rec_pass = tk.StringVar()
+        ttk.Entry(r, textvariable=self._rec_pass, show="•").pack(
+            side=tk.LEFT, fill=tk.X, expand=True)
+
+        # Divider
+        tk.Frame(outer, bg=BORDER, height=1).pack(fill=tk.X, pady=16)
+
+        # Buttons row
+        btn_row = tk.Frame(outer, bg=BG)
+        btn_row.pack(fill=tk.X)
+
+        self.rec_start_btn = tk.Label(
+            btn_row, text="⏺  Start Recording", bg=ACCENT, fg="#ffffff",
+            font=(FONT, 11, "bold"), cursor="hand2",
+            padx=16, pady=8, relief="flat")
+        self.rec_start_btn.pack(side=tk.LEFT, padx=(0, 10))
+        self.rec_start_btn.bind("<Button-1>", lambda e: self._on_record_start())
+
+        self.rec_stop_btn = tk.Label(
+            btn_row, text="■  Stop", bg=BORDER, fg=FG_SEC,
+            font=(FONT, 11), cursor="hand2",
+            padx=16, pady=8, relief="flat")
+        self.rec_stop_btn.pack(side=tk.LEFT)
+        self.rec_stop_btn.bind("<Button-1>", lambda e: self._on_record_stop())
+
+        # Status line
+        self._rec_status_var = tk.StringVar(value="")
+        self.rec_status_lbl = tk.Label(
+            outer, textvariable=self._rec_status_var,
+            bg=BG, fg=ACCENT, font=(FONT, 9, "italic"), anchor="w")
+        self.rec_status_lbl.pack(fill=tk.X, pady=(10, 0))
 
     def _build_content_results(self):
         self.content_results = tk.Frame(self.content_frame, bg=BG)
@@ -322,15 +410,17 @@ class BugulaApp:
         tree_frame = tk.Frame(inner, bg=BORDER)
         tree_frame.pack(fill=tk.BOTH, expand=True)
 
-        cols = ("status", "description", "error")
+        cols = ("time", "status", "description", "error")
         self.csv_tree = ttk.Treeview(
             tree_frame, columns=cols, show="headings",
             selectmode="browse", height=18)
 
+        self.csv_tree.heading("time", text="Zeit", anchor="w")
         self.csv_tree.heading("status", text="Status", anchor="w")
         self.csv_tree.heading("description", text="Description", anchor="w")
         self.csv_tree.heading("error", text="Error", anchor="w")
 
+        self.csv_tree.column("time", width=70, minwidth=60, stretch=False, anchor="w")
         self.csv_tree.column("status", width=70, minwidth=60, stretch=False, anchor="w")
         self.csv_tree.column("description", width=300, minwidth=150, anchor="w")
         self.csv_tree.column("error", width=350, minwidth=100, anchor="w")
@@ -344,6 +434,35 @@ class BugulaApp:
 
         self.csv_tree.tag_configure("err", foreground=RED)
         self.csv_tree.tag_configure("ok", foreground=FG)
+
+    # ------------------------------------------------------------------
+    # Tooltip helper
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _add_tooltip(widget, text):
+        tip = None
+
+        def show(event):
+            nonlocal tip
+            tip = tk.Toplevel(widget)
+            tip.wm_overrideredirect(True)
+            tip.wm_geometry(f"+{event.x_root + 10}+{event.y_root + 10}")
+            tk.Label(tip, text=text, bg="#333", fg="#fff",
+                     font=("Segoe UI", 9), padx=6, pady=3).pack()
+
+        def hide(event):
+            nonlocal tip
+            if tip:
+                tip.destroy()
+                tip = None
+
+        widget.bind("<Enter>", show)
+        widget.bind("<Leave>", hide)
+
+    # ------------------------------------------------------------------
+    # Section switching
+    # ------------------------------------------------------------------
 
     def _show_section(self, section: str):
         if self._current_section == "testing":
@@ -366,10 +485,78 @@ class BugulaApp:
             self.sub_testing.pack(fill=tk.BOTH, expand=True)
             self.content_testing.pack(fill=tk.BOTH, expand=True)
             self._refresh_tc_list()
+        elif section == "record":
+            # Record has no sub-panel list; show an empty sub panel
+            self.content_record.pack(fill=tk.BOTH, expand=True)
         elif section == "results":
             self.sub_results.pack(fill=tk.BOTH, expand=True)
             self.content_results.pack(fill=tk.BOTH, expand=True)
             self._refresh_results_list()
+
+    # ------------------------------------------------------------------
+    # Record actions
+    # ------------------------------------------------------------------
+
+    def _on_record_start(self):
+        if self.running:
+            messagebox.showwarning("", "Already running.")
+            return
+
+        url = self._rec_url.get().strip()
+        if not url:
+            messagebox.showwarning("", "Please enter a URL.")
+            return
+        if not url.startswith(("http://", "https://")):
+            url = "https://" + url
+            self._rec_url.set(url)
+
+        name = self._rec_name.get().strip().replace(" ", "_") or "recording"
+        browser = self._rec_browser.get()
+        private = self._rec_private.get()
+        username = self._rec_user.get().strip()
+        password = self._rec_pass.get()
+
+        self._set_running(True)
+        self.rec_start_btn.configure(bg=BORDER, fg=FG_SEC)
+        self.rec_stop_btn.configure(bg=RED, fg="#ffffff")
+        self._rec_status_var.set("Opening browser…")
+
+        threading.Thread(
+            target=run_record,
+            args=(self, url, name, browser, username, password, private),
+            daemon=True,
+        ).start()
+
+    def _on_record_stop(self):
+        if not self.running:
+            return
+        self.running = False
+        quit_browser(self.driver)
+
+    def _update_record_status(self, text: str):
+        self._rec_status_var.set(text)
+
+    def _on_record_saved(self, yaml_path: str):
+        name = os.path.basename(yaml_path).replace(".yaml", "")
+        self._rec_status_var.set(f"Saved: {name}.yaml")
+        self.rec_start_btn.configure(bg=ACCENT, fg="#ffffff")
+        self.rec_stop_btn.configure(bg=BORDER, fg=FG_SEC)
+        # Switch to Testing and open the new file
+        self._show_section("testing")
+        self._refresh_tc_list()
+        # Select the newly recorded file
+        for i in range(self.tc_listbox.size()):
+            if self.tc_listbox.get(i) == name:
+                self.tc_listbox.selection_clear(0, tk.END)
+                self.tc_listbox.selection_set(i)
+                self.tc_listbox.activate(i)
+                self.tc_listbox.see(i)
+                self._load_into_editor(yaml_path)
+                break
+
+    # ------------------------------------------------------------------
+    # Testcase list
+    # ------------------------------------------------------------------
 
     def _refresh_tc_list(self):
         self.tc_listbox.delete(0, tk.END)
@@ -401,6 +588,10 @@ class BugulaApp:
             self.tc_menu.tk_popup(event.x_root, event.y_root)
         finally:
             self.tc_menu.grab_release()
+
+    # ------------------------------------------------------------------
+    # Results list
+    # ------------------------------------------------------------------
 
     def _refresh_results_list(self):
         self.results_listbox.delete(0, tk.END)
@@ -439,6 +630,10 @@ class BugulaApp:
         except Exception as e:
             messagebox.showerror("", f"Error: {e}")
 
+    # ------------------------------------------------------------------
+    # Editor helpers
+    # ------------------------------------------------------------------
+
     def _load_into_editor(self, path: str):
         try:
             with open(path, "r", encoding="utf-8") as f:
@@ -468,6 +663,10 @@ class BugulaApp:
         except Exception:
             pass
 
+    # ------------------------------------------------------------------
+    # CSV helpers
+    # ------------------------------------------------------------------
+
     def _load_csv_into_tree(self, path: str):
         import csv as csvmod
 
@@ -479,16 +678,17 @@ class BugulaApp:
             if not rows:
                 return
 
-            rows.sort(key=lambda r: (0 if r.get("status", "").strip('"')
-                                     == "FEHLER" else 1))
+            rows.sort(key=lambda r: r.get("timestamp", ""))
             for row in rows:
                 status_raw = row.get("status", "").strip('"')
                 desc = row.get("description", "").strip('"')
                 error = row.get("error_detail", "").strip('"').replace("\n", " ").replace("\r", "")
+                ts = row.get("timestamp", "").strip('"')
+                time_str = ts.split(" ", 1)[1] if " " in ts else ts
                 status = "Error" if status_raw == "FEHLER" else "OK"
                 tag = "err" if status_raw == "FEHLER" else "ok"
                 self.csv_tree.insert("", tk.END,
-                                     values=(status, desc, error),
+                                     values=(time_str, status, desc, error),
                                      tags=(tag,))
         except Exception as e:
             log.warning(f"CSV load failed: {e}")
@@ -509,12 +709,16 @@ class BugulaApp:
             with open(path, "w", newline="", encoding="utf-8-sig") as f:
                 writer = csvmod.writer(f, delimiter=";",
                                        quoting=csvmod.QUOTE_ALL)
-                writer.writerow(["Status", "Description", "Error"])
+                writer.writerow(["Zeit", "Status", "Description", "Error"])
                 for iid in children:
                     writer.writerow(self.csv_tree.item(iid, "values"))
             log.info(f"CSV saved: {path}")
         except Exception as e:
             messagebox.showerror("", f"Failed to save:\n{e}")
+
+    # ------------------------------------------------------------------
+    # Testcase CRUD
+    # ------------------------------------------------------------------
 
     def _on_create(self):
         name = simpledialog.askstring(
@@ -579,6 +783,10 @@ class BugulaApp:
             self._refresh_tc_list()
         except Exception as e:
             messagebox.showerror("", f"Error: {e}")
+
+    # ------------------------------------------------------------------
+    # Test run
+    # ------------------------------------------------------------------
 
     def _on_run_test(self, headless: bool = True):
         if self.running:
