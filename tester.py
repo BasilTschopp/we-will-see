@@ -332,13 +332,32 @@ class NavigationTester:
         start = time.time()
         try:
             if item.source_url:
-                self.driver.get(item.source_url)
-                time.sleep(self.wait_time)
+                current = self.driver.current_url
+                def _base(u):
+                    from urllib.parse import urlparse, urlunparse
+                    p = urlparse(u)
+                    return urlunparse((p.scheme, p.netloc, p.path, "", "", ""))
+                if _base(current) != _base(item.source_url):
+                    self.driver.get(item.source_url)
+                    try:
+                        WebDriverWait(self.driver, 10).until(
+                            EC.presence_of_element_located(
+                                (By.CSS_SELECTOR, item.selector)))
+                    except TimeoutException:
+                        pass  # fall through; find_element will raise below
 
-            el = self.driver.find_element(By.CSS_SELECTOR, item.selector)
+            # Wait until the field is actually interactable
+            try:
+                el = WebDriverWait(self.driver, 10).until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, item.selector)))
+            except TimeoutException:
+                el = self.driver.find_element(By.CSS_SELECTOR, item.selector)
+
             load_ms = int((time.time() - start) * 1000)
 
             if el.is_displayed():
+                self.driver.execute_script(
+                    "arguments[0].scrollIntoView({block:'center'});", el)
                 el.clear()
                 el.send_keys(item.input_value)
 
@@ -350,7 +369,8 @@ class NavigationTester:
                     key = key_map.get(item.submit_key.lower())
                     if key:
                         el.send_keys(key)
-                        time.sleep(self.wait_time)
+                        # Wait for DOM to settle after submit key
+                        self._wait_for_dom_stable()
 
                 self._record(item, status="OK",
                              title=f"Input: '{item.input_value[:40]}'"
@@ -370,23 +390,42 @@ class NavigationTester:
         start = time.time()
         try:
             if item.source_url:
-                self.driver.get(item.source_url)
-                time.sleep(self.wait_time)
+                current = self.driver.current_url
+                # Strip query/fragment for comparison – only navigate when
+                # the base page is actually different
+                def _base(u):
+                    from urllib.parse import urlparse, urlunparse
+                    p = urlparse(u)
+                    return urlunparse((p.scheme, p.netloc, p.path, "", "", ""))
+                if _base(current) != _base(item.source_url):
+                    self.driver.get(item.source_url)
+                    try:
+                        WebDriverWait(self.driver, 10).until(
+                            EC.presence_of_element_located(
+                                (By.CSS_SELECTOR, item.selector)))
+                    except TimeoutException:
+                        pass
 
-            el = self.driver.find_element(By.CSS_SELECTOR, item.selector)
+            # Wait until clickable
+            try:
+                el = WebDriverWait(self.driver, 10).until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, item.selector)))
+            except TimeoutException:
+                el = self.driver.find_element(By.CSS_SELECTOR, item.selector)
+
             pre_url = self.driver.current_url
-            pre_fp = dom_fingerprint(self.driver)
+            pre_fp  = dom_fingerprint(self.driver)
             load_ms = int((time.time() - start) * 1000)
 
             if self._safe_click(el):
-                time.sleep(self.wait_time)
+                self._wait_for_dom_stable(pre_url=pre_url, pre_fp=pre_fp)
                 post_url = self.driver.current_url
                 if post_url != pre_url:
                     title = f"Click → {post_url}"
                 elif dom_fingerprint(self.driver) != pre_fp:
-                    title = f"Click → DOM change"
+                    title = "Click → DOM change"
                 else:
-                    title = f"Click executed"
+                    title = "Click executed"
                 error = self._check_error_page()
                 if error:
                     self._record(item, status="FEHLER",
@@ -456,6 +495,46 @@ class NavigationTester:
         log.info(f"  OK – Wait {seconds}s")
 
 
+
+    def _wait_for_dom_stable(self, pre_url: str = "", pre_fp: str = "",
+                              timeout: float = 8.0,
+                              stable_for: float = 0.25) -> None:
+        """
+        Wait until the page has settled after a click or key press.
+
+        Strategy (in order):
+          1. If the URL changed  → wait for <body> to be present.
+          2. If the DOM fingerprint changed  → done immediately.
+          3. Poll until the fingerprint is stable for `stable_for` seconds
+             or `timeout` is reached.
+        """
+        deadline = time.time() + timeout
+        try:
+            # Give the browser a single tick to start reacting
+            time.sleep(0.05)
+
+            current_url = self.driver.current_url
+            if pre_url and current_url != pre_url:
+                WebDriverWait(self.driver, timeout).until(
+                    EC.presence_of_element_located((By.TAG_NAME, "body")))
+                return
+
+            last_fp = dom_fingerprint(self.driver)
+            if pre_fp and last_fp != pre_fp:
+                return  # DOM already changed – good enough
+
+            stable_since = time.time()
+            while time.time() < deadline:
+                time.sleep(0.1)
+                fp = dom_fingerprint(self.driver)
+                if fp != last_fp:
+                    last_fp = fp
+                    stable_since = time.time()
+                elif time.time() - stable_since >= stable_for:
+                    return  # stable for long enough
+        except Exception:
+            pass  # never let a wait helper crash the test
+
     def _check_error_page(self) -> str:
         try:
             title = (self.driver.title or "").lower()
@@ -523,7 +602,7 @@ CSV_COLUMNS = [
 def export_to_csv(results: list[NavigationResult], output_path: str):
     sorted_results = sorted(
         results,
-        key=lambda r: (0 if r.status == "FEHLER" else 1, r.method, r.url))
+        key=lambda r: r.timestamp)
 
     with open(output_path, "w", newline="", encoding="utf-8-sig") as f:
         writer = csv.DictWriter(f, fieldnames=CSV_COLUMNS,
