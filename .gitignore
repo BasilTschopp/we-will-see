@@ -1,3 +1,6 @@
 .env
 .claude
+.csv
+.xml
 *.db
+*pycache*
