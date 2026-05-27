@@ -1,7 +1,5 @@
-import csv
 import os
 import time
-from dataclasses import asdict
 from datetime import datetime
 
 from selenium.webdriver.common.by import By
@@ -16,28 +14,243 @@ from selenium.common.exceptions import (
     WebDriverException,
 )
 
-from models import (
+from models.models import (
     log, NavigationItem, NavigationResult, dom_fingerprint,
     dismiss_cookie_banner,
     NAV_CLICK_SELECTORS, MODAL_TRIGGER_SELECTORS, MODAL_CONTAINER_SELECTORS,
     PAGINATION_SELECTORS, TABLE_ROW_SELECTORS,
 )
+from usecases.testcase_reader import load_testcases
+from usecases.testcase_writer import save_testcase
+from usecases.testcase_recorder import SessionRecorder
 
+TESTRESULTS_DIR = os.path.join("files", "testresults")
+
+
+def _testresults_dir() -> str:
+    import sys
+    d = os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])),
+                     TESTRESULTS_DIR)
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def run_test(app, tc_names: list[str], headless: bool = True):
+    from adapters.browser.driver import start_browser, quit_browser
+    from adapters.browser.login import login
+    from adapters.database.testresults import save_results, export_to_csv
+
+    try:
+        all_items = []
+        url = ""
+        browser_name = "chrome"
+        username = ""
+        password = ""
+        private = False
+
+        for name in tc_names:
+            items, meta = load_testcases(name)
+            all_items.extend(items)
+            if meta.get("url"):
+                url = meta["url"]
+            if meta.get("browser"):
+                browser_name = meta["browser"].strip().lower()
+            if meta.get("username"):
+                username = str(meta["username"]).strip()
+            if meta.get("password"):
+                password = str(meta["password"]).strip()
+            if meta.get("private"):
+                private = bool(meta["private"])
+
+        if not url:
+            log.error("No URL found in YAML meta.")
+            from tkinter import messagebox
+            app.root.after(0, lambda: messagebox.showwarning(
+                "", "No URL found in testcases."))
+            return
+
+        if browser_name not in ("chrome", "edge", "firefox"):
+            browser_name = "chrome"
+
+        app.driver = start_browser(headless=headless,
+                                   browser=browser_name, private=private)
+        if not app.running:
+            return
+
+        login(app.driver, url, username, password)
+        dismiss_cookie_banner(app.driver)
+        if not app.running:
+            return
+
+        ts = datetime.now().strftime("%y.%m.%d - %H.%M Uhr")
+        result_name = f"{ts} - {', '.join(tc_names)}"
+
+        tester = NavigationTester(
+            driver=app.driver, items=all_items)
+        app.results = tester.test_all()
+
+        csv_path = os.path.join(_testresults_dir(), f"{result_name}.csv")
+        export_to_csv(app.results, csv_path)
+        save_results(result_name, app.results)
+
+        ok  = sum(1 for r in app.results if r.status == "OK")
+        err = sum(1 for r in app.results if r.status == "FEHLER")
+        log.info(f"Done — {ok} OK, {err} errors")
+        app.root.after(0, app._refresh_results_list)
+
+    except Exception as e:
+        log.error(f"Error: {e}")
+    finally:
+        from adapters.browser.driver import quit_browser
+        quit_browser(app.driver)
+        app.driver  = None
+        app.running = False
+        app.root.after(0, app._set_running, False)
+
+
+def run_automated_cli():
+    from adapters.database.testcases import list_automated_testcases
+    from adapters.browser.driver import start_browser, quit_browser
+    from adapters.browser.login import login
+    from adapters.database.testresults import save_results, export_to_csv
+
+    names = list_automated_testcases()
+    if not names:
+        print("No automated testcases defined.")
+        return
+
+    print(f"Running {len(names)} automated testcase(s): {', '.join(names)}")
+    driver = None
+    try:
+        all_items, url, browser_name, username, password, private = [], "", "chrome", "", "", False
+        for name in names:
+            items, meta = load_testcases(name)
+            all_items.extend(items)
+            if meta.get("url"):      url          = meta["url"]
+            if meta.get("browser"):  browser_name = meta["browser"].strip().lower()
+            if meta.get("username"): username     = str(meta["username"]).strip()
+            if meta.get("password"): password     = str(meta["password"]).strip()
+            if meta.get("private"):  private      = bool(meta["private"])
+
+        if not url:
+            print("ERROR: No URL found in testcases.")
+            return
+        if browser_name not in ("chrome", "edge", "firefox"):
+            browser_name = "chrome"
+
+        driver = start_browser(headless=True, browser=browser_name, private=private)
+        login(driver, url, username, password)
+        dismiss_cookie_banner(driver)
+
+        ts          = datetime.now().strftime("%y.%m.%d - %H.%M Uhr")
+        result_name = f"{ts} - {', '.join(names)}"
+        results     = NavigationTester(driver=driver, items=all_items).test_all()
+
+        csv_path = os.path.join(_testresults_dir(), f"{result_name}.csv")
+        export_to_csv(results, csv_path)
+        save_results(result_name, results)
+
+        ok  = sum(1 for r in results if r.status == "OK")
+        err = sum(1 for r in results if r.status == "FEHLER")
+        print(f"Done — {ok} OK, {err} errors  |  {result_name}")
+
+    except Exception as e:
+        print(f"ERROR: {e}")
+        log.error(f"CLI run error: {e}")
+    finally:
+        quit_browser(driver)
+
+
+def run_record(app, url: str, tc_name: str,
+               browser_name: str = "chrome",
+               username: str = "", password: str = "",
+               private: bool = False, category: str = "",
+               no_wait: bool = False):
+    from adapters.browser.driver import start_browser, quit_browser
+    from adapters.browser.login import login
+
+    try:
+        app.driver = start_browser(headless=False, browser=browser_name,
+                                   private=private)
+        crawl_url = login(app.driver, url, username, password)
+
+        recorder = SessionRecorder(app.driver, crawl_url)
+        recorder.start()
+        app.recorder = recorder
+
+        log.info("Recordingâ€¦ close browser or press Stop to finish.")
+
+        def _tick():
+            if not app.running:
+                return
+            n = recorder.event_count()
+            try:
+                app.root.after(0, app._update_record_status,
+                               f"Recordingâ€¦ {n} events captured")
+            except Exception:
+                pass
+            import threading
+            threading.Timer(1.0, _tick).start()
+
+        _tick()
+
+        while app.running:
+            try:
+                _ = app.driver.current_url
+            except Exception:
+                log.info("Browser closed by user — stopping recorder.")
+                break
+            time.sleep(0.5)
+
+        recorder.stop()
+
+        yaml_text = recorder.to_yaml(
+            name=tc_name,
+            url=url,
+            browser=browser_name,
+            username=username,
+            password=password,
+            no_wait=no_wait,
+        )
+
+        saved_name = save_testcase(
+            name=tc_name,
+            yaml_text=yaml_text,
+            category=category,
+        )
+
+        log.info(f"Recording saved: {saved_name}")
+        app.root.after(0, app._on_record_saved, saved_name)
+
+    except Exception as e:
+        log.error(f"Recording error: {e}")
+        import traceback; traceback.print_exc()
+    finally:
+        from adapters.browser.driver import quit_browser
+        quit_browser(app.driver)
+        app.driver   = None
+        app.recorder = None
+        app.running  = False
+        app.root.after(0, app._set_running, False)
+        app.root.after(0, app._update_record_status, "")
+
+
+# ---------------------------------------------------------------------------
+# NavigationTester — executes testcase steps in the browser
+# ---------------------------------------------------------------------------
 
 class NavigationTester:
 
-    def __init__(self, driver, items: list[NavigationItem],
-                 wait_time: float = 0.3):
-        self.driver = driver
-        self.items = items
-        self.wait_time = wait_time
+    def __init__(self, driver, items: list[NavigationItem]):
+        self.driver  = driver
+        self.items   = items
         self.results: list[NavigationResult] = []
 
     def _safe_click(self, element) -> bool:
         try:
             self.driver.execute_script(
                 "arguments[0].scrollIntoView({block:'center'});", element)
-            time.sleep(0.15)
+            time.sleep(0.05)
             element.click()
             return True
         except Exception:
@@ -50,16 +263,16 @@ class NavigationTester:
 
         total = len(self.items)
         dispatch = {
-            "link": self._test_link,
-            "nav_click": self._test_nav_click,
-            "modal": self._test_modal,
-            "tab": self._test_tab,
-            "pagination": self._test_pagination,
-            "table_row": self._test_table_row,
-            "form_input": self._test_form_input,
-            "click": self._test_click,
+            "link":        self._test_link,
+            "nav_click":   self._test_nav_click,
+            "modal":       self._test_modal,
+            "tab":         self._test_tab,
+            "pagination":  self._test_pagination,
+            "table_row":   self._test_table_row,
+            "form_input":  self._test_form_input,
+            "click":       self._test_click,
             "assert_text": self._test_assert_text,
-            "wait": self._test_wait,
+            "wait":        self._test_wait,
         }
 
         for idx, item in enumerate(self.items, 1):
@@ -72,19 +285,18 @@ class NavigationTester:
                 self._record(item, status="FEHLER",
                              error=f"Unexpected error: {str(e)[:200]}")
 
-        ok = sum(1 for r in self.results if r.status == "OK")
+
+        ok  = sum(1 for r in self.results if r.status == "OK")
         err = sum(1 for r in self.results if r.status == "FEHLER")
         log.info(f"\n{'='*50}")
         log.info(f"RESULT: {ok} OK  /  {err} ERRORS  /  {total} Total")
         log.info(f"{'='*50}")
         return self.results
 
-
     def _navigate_and_find(self, item, selector, match_attr="text"):
         base = item.source_url or item.url.split("#")[0]
         self.driver.get(base)
-        time.sleep(self.wait_time)
-
+        self._wait_for_dom_stable()
         elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
         for el in elements:
             try:
@@ -102,30 +314,66 @@ class NavigationTester:
                 continue
         return None
 
-
     def _test_link(self, item: NavigationItem):
         start = time.time()
         try:
-            self.driver.get(item.url)
-            WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located((By.TAG_NAME, "body")))
-            dismiss_cookie_banner(self.driver)
+            from urllib.parse import urlparse
+            current_base = self.driver.current_url.split("#")[0]
+            target_base  = item.url.split("#")[0]
 
+            if current_base == target_base and "#" in item.url:
+                hash_part = item.url.split("#", 1)[1]
+                pre_fp = dom_fingerprint(self.driver)
+                self.driver.execute_script(
+                    f"window.location.hash = '{hash_part}'")
+                try:
+                    WebDriverWait(self.driver, 5).until(
+                        lambda d: hash_part in d.current_url)
+                except TimeoutException:
+                    pass
+                self._wait_for_dom_stable(pre_fp=pre_fp)
+            else:
+                self.driver.get(item.url)
+                WebDriverWait(self.driver, 10).until(
+                    EC.presence_of_element_located((By.TAG_NAME, "body")))
+                # JS-OAuth-Redirects abwarten: URL bis zu 5s pollen
+                expected_host = urlparse(item.url).netloc
+                deadline_url  = time.time() + 5
+                last_url      = self.driver.current_url
+                while time.time() < deadline_url:
+                    time.sleep(0.25)
+                    try:
+                        cur = self.driver.current_url
+                    except Exception:
+                        break
+                    if urlparse(cur).netloc != expected_host:
+                        break  # Redirect auf anderen Host erkannt
+                    if cur == last_url:
+                        break  # URL hat sich nicht mehr verändert
+                    last_url = cur
             load_ms = int((time.time() - start) * 1000)
-            title = self.driver.title or ""
+            title   = self.driver.title or ""
 
-            error = self._check_error_page()
+            # Prüfen ob JS-Redirect auf anderen Host geführt hat
+            expected_host = urlparse(item.url).netloc
+            final_host    = urlparse(self.driver.current_url).netloc
+            if expected_host and final_host and final_host != expected_host:
+                self._record(item, status="FEHLER",
+                             error=f"Redirect zu fremdem Host: {final_host}",
+                             title=title, load_ms=load_ms)
+                return
+
+            error = self._check_error_page() or self._check_page_loaded()
             if error:
                 self._record(item, status="FEHLER",
-                             error=f"Error page: {error}",
+                             error=error,
                              title=title, load_ms=load_ms)
             else:
                 self._record(item, status="OK", title=title, load_ms=load_ms)
-                log.info(f"  OK ({load_ms}ms) – {title[:60]}")
-
+                log.info(f"  OK ({load_ms}ms) — {title[:60]}")
         except TimeoutException:
             self._record(item, status="FEHLER",
-                         error="Timeout – page did not load",
+                         error="Timeout — page did not load",
                          load_ms=int((time.time() - start) * 1000))
         except WebDriverException as e:
             self._record(item, status="FEHLER",
@@ -136,11 +384,11 @@ class NavigationTester:
         start = time.time()
         try:
             selector = ", ".join(NAV_CLICK_SELECTORS)
-            el = self._navigate_and_find(item, selector)
-            load_ms = int((time.time() - start) * 1000)
-
+            el       = self._navigate_and_find(item, selector)
+            load_ms  = int((time.time() - start) * 1000)
+            pre_url  = self.driver.current_url if el else ""
             if el and self._safe_click(el):
-                time.sleep(self.wait_time)
+                self._wait_for_dom_stable(pre_url=pre_url)
                 title = self.driver.title or ""
                 error = self._check_error_page()
                 if error:
@@ -149,29 +397,27 @@ class NavigationTester:
                                  title=title, load_ms=load_ms)
                 else:
                     self._record(item, status="OK", title=title, load_ms=load_ms)
-                    log.info(f"  OK ({load_ms}ms) – {title[:60]}")
+                    log.info(f"  OK ({load_ms}ms) — {title[:60]}")
             else:
                 self._record(item, status="FEHLER",
                              error=f"Element '{item.element_text}' not clickable",
                              load_ms=load_ms)
         except Exception as e:
-            self._record(item, status="FEHLER",
-                         error=str(e)[:200],
+            self._record(item, status="FEHLER", error=str(e)[:200],
                          load_ms=int((time.time() - start) * 1000))
 
     def _test_modal(self, item: NavigationItem):
         start = time.time()
         try:
             selector = ", ".join(MODAL_TRIGGER_SELECTORS)
-            el = self._navigate_and_find(item, selector)
-            load_ms = int((time.time() - start) * 1000)
-
+            el       = self._navigate_and_find(item, selector)
+            load_ms  = int((time.time() - start) * 1000)
+            pre_url  = self.driver.current_url if el else ""
             if el and self._safe_click(el):
-                time.sleep(self.wait_time)
+                self._wait_for_dom_stable(pre_url=pre_url)
                 modal_sel = ", ".join(MODAL_CONTAINER_SELECTORS)
-                modals = self.driver.find_elements(By.CSS_SELECTOR, modal_sel)
-                visible = [m for m in modals if m.is_displayed()]
-
+                modals    = self.driver.find_elements(By.CSS_SELECTOR, modal_sel)
+                visible   = [m for m in modals if m.is_displayed()]
                 if visible:
                     self._record(item, status="OK",
                                  title=f"Modal opened via '{item.element_text}'",
@@ -179,7 +425,7 @@ class NavigationTester:
                     log.info(f"  Modal OK ({load_ms}ms)")
                     try:
                         ActionChains(self.driver).send_keys(Keys.ESCAPE).perform()
-                        time.sleep(0.2)
+                        self._wait_for_dom_stable()
                     except Exception:
                         pass
                 else:
@@ -191,20 +437,18 @@ class NavigationTester:
                              error=f"Modal trigger '{item.element_text}' not clickable",
                              load_ms=load_ms)
         except Exception as e:
-            self._record(item, status="FEHLER",
-                         error=str(e)[:200],
+            self._record(item, status="FEHLER", error=str(e)[:200],
                          load_ms=int((time.time() - start) * 1000))
 
     def _test_tab(self, item: NavigationItem):
         start = time.time()
         try:
-            el = self._navigate_and_find(item, "[role='tab']")
-            pre_fp = dom_fingerprint(self.driver)
+            el      = self._navigate_and_find(item, "[role='tab']")
+            pre_fp  = dom_fingerprint(self.driver)
             load_ms = int((time.time() - start) * 1000)
-
             if el and el.is_displayed():
                 el.click()
-                time.sleep(self.wait_time)
+                self._wait_for_dom_stable()
                 changed = dom_fingerprint(self.driver) != pre_fp
                 self._record(item, status="OK",
                              title=f"Tab '{item.element_text}'"
@@ -216,20 +460,18 @@ class NavigationTester:
                              error=f"Tab '{item.element_text}' not clickable",
                              load_ms=load_ms)
         except Exception as e:
-            self._record(item, status="FEHLER",
-                         error=str(e)[:200],
+            self._record(item, status="FEHLER", error=str(e)[:200],
                          load_ms=int((time.time() - start) * 1000))
 
     def _test_pagination(self, item: NavigationItem):
         start = time.time()
         try:
             selector = ", ".join(PAGINATION_SELECTORS)
-            el = self._navigate_and_find(item, selector, match_attr="label")
-            pre_fp = dom_fingerprint(self.driver)
-            load_ms = int((time.time() - start) * 1000)
-
+            el       = self._navigate_and_find(item, selector, match_attr="label")
+            pre_fp   = dom_fingerprint(self.driver)
+            load_ms  = int((time.time() - start) * 1000)
             if el and self._safe_click(el):
-                time.sleep(self.wait_time)
+                self._wait_for_dom_stable()
                 changed = dom_fingerprint(self.driver) != pre_fp
                 self._record(item, status="OK",
                              title=f"Pagination '{item.element_text}'"
@@ -241,21 +483,18 @@ class NavigationTester:
                              error=f"Pagination '{item.element_text}' not clickable",
                              load_ms=load_ms)
         except Exception as e:
-            self._record(item, status="FEHLER",
-                         error=str(e)[:200],
+            self._record(item, status="FEHLER", error=str(e)[:200],
                          load_ms=int((time.time() - start) * 1000))
 
     def _test_table_row(self, item: NavigationItem):
         start = time.time()
-        base = item.source_url or item.url.split("#")[0]
+        base  = item.source_url or item.url.split("#")[0]
         try:
             self.driver.get(base)
-            time.sleep(0.5)
-
+            self._wait_for_dom_stable()
             pre_url = self.driver.current_url
-            pre_fp = dom_fingerprint(self.driver)
-
-            rows = self.driver.find_elements(
+            pre_fp  = dom_fingerprint(self.driver)
+            rows    = self.driver.find_elements(
                 By.CSS_SELECTOR, ", ".join(TABLE_ROW_SELECTORS))
             data_rows = []
             for r in rows:
@@ -277,7 +516,7 @@ class NavigationTester:
                 try:
                     self.driver.execute_script(
                         "arguments[0].scrollIntoView({block:'center'});", row)
-                    time.sleep(0.15)
+                    time.sleep(0.05)
                     for strategy in [
                         lambda: row.find_element(By.CSS_SELECTOR, "a[href]"),
                         lambda: row.find_element(
@@ -294,26 +533,23 @@ class NavigationTester:
                         except (NoSuchElementException, WebDriverException):
                             continue
                     if not clicked:
-                        self.driver.execute_script(
-                            "arguments[0].click();", row)
+                        self.driver.execute_script("arguments[0].click();", row)
                         clicked = True
                 except (StaleElementReferenceException, WebDriverException):
                     try:
-                        self.driver.execute_script(
-                            "arguments[0].click();", row)
+                        self.driver.execute_script("arguments[0].click();", row)
                         clicked = True
                     except Exception:
                         pass
 
             load_ms = int((time.time() - start) * 1000)
-
             if clicked:
-                time.sleep(0.5)
+                self._wait_for_dom_stable(pre_url=pre_url)
                 post_url = self.driver.current_url
                 if post_url != pre_url:
-                    title = f"Row → {post_url}"
+                    title = f"Row â†' {post_url}"
                 elif dom_fingerprint(self.driver) != pre_fp:
-                    title = "Row → DOM change"
+                    title = "Row â†' DOM change"
                 else:
                     title = "Row clicked, no reaction"
                 self._record(item, status="OK", title=title, load_ms=load_ms)
@@ -323,10 +559,8 @@ class NavigationTester:
                              error="No clickable table row found",
                              load_ms=load_ms)
         except Exception as e:
-            self._record(item, status="FEHLER",
-                         error=str(e)[:200],
+            self._record(item, status="FEHLER", error=str(e)[:200],
                          load_ms=int((time.time() - start) * 1000))
-
 
     def _test_form_input(self, item: NavigationItem):
         start = time.time()
@@ -344,9 +578,7 @@ class NavigationTester:
                             EC.presence_of_element_located(
                                 (By.CSS_SELECTOR, item.selector)))
                     except TimeoutException:
-                        pass  # fall through; find_element will raise below
-
-            # Wait until the field is actually interactable
+                        pass
             try:
                 el = WebDriverWait(self.driver, 10).until(
                     EC.element_to_be_clickable((By.CSS_SELECTOR, item.selector)))
@@ -354,13 +586,11 @@ class NavigationTester:
                 el = self.driver.find_element(By.CSS_SELECTOR, item.selector)
 
             load_ms = int((time.time() - start) * 1000)
-
             if el.is_displayed():
                 self.driver.execute_script(
                     "arguments[0].scrollIntoView({block:'center'});", el)
                 el.clear()
                 el.send_keys(item.input_value)
-
                 key_map = {
                     "enter": Keys.ENTER, "return": Keys.RETURN,
                     "tab": Keys.TAB, "escape": Keys.ESCAPE,
@@ -369,14 +599,12 @@ class NavigationTester:
                     key = key_map.get(item.submit_key.lower())
                     if key:
                         el.send_keys(key)
-                        # Wait for DOM to settle after submit key
                         self._wait_for_dom_stable()
-
                 self._record(item, status="OK",
                              title=f"Input: '{item.input_value[:40]}'"
                                    f"{' + ' + item.submit_key if item.submit_key else ''}",
                              load_ms=load_ms)
-                log.info(f"  OK ({load_ms}ms) – Input in {item.selector}")
+                log.info(f"  OK ({load_ms}ms) — Input in {item.selector}")
             else:
                 self._record(item, status="FEHLER",
                              error=f"Field '{item.selector}' not visible",
@@ -391,8 +619,6 @@ class NavigationTester:
         try:
             if item.source_url:
                 current = self.driver.current_url
-                # Strip query/fragment for comparison – only navigate when
-                # the base page is actually different
                 def _base(u):
                     from urllib.parse import urlparse, urlunparse
                     p = urlparse(u)
@@ -405,8 +631,6 @@ class NavigationTester:
                                 (By.CSS_SELECTOR, item.selector)))
                     except TimeoutException:
                         pass
-
-            # Wait until clickable
             try:
                 el = WebDriverWait(self.driver, 10).until(
                     EC.element_to_be_clickable((By.CSS_SELECTOR, item.selector)))
@@ -421,9 +645,9 @@ class NavigationTester:
                 self._wait_for_dom_stable(pre_url=pre_url, pre_fp=pre_fp)
                 post_url = self.driver.current_url
                 if post_url != pre_url:
-                    title = f"Click → {post_url}"
+                    title = f"Click â†' {post_url}"
                 elif dom_fingerprint(self.driver) != pre_fp:
-                    title = "Click → DOM change"
+                    title = "Click â†' DOM change"
                 else:
                     title = "Click executed"
                 error = self._check_error_page()
@@ -433,7 +657,7 @@ class NavigationTester:
                                  load_ms=load_ms)
                 else:
                     self._record(item, status="OK", title=title, load_ms=load_ms)
-                    log.info(f"  OK ({load_ms}ms) – {title[:60]}")
+                    log.info(f"  OK ({load_ms}ms) — {title[:60]}")
             else:
                 self._record(item, status="FEHLER",
                              error=f"Element '{item.selector}' not clickable",
@@ -448,14 +672,12 @@ class NavigationTester:
         try:
             if item.source_url:
                 self.driver.get(item.source_url)
-                time.sleep(self.wait_time)
-
+                self._wait_for_dom_stable()
             search = item.assert_text or item.input_value
             if not search:
                 self._record(item, status="FEHLER",
                              error="No assert_text defined")
                 return
-
             if item.selector:
                 try:
                     el = WebDriverWait(self.driver, 5).until(
@@ -469,12 +691,11 @@ class NavigationTester:
                     By.TAG_NAME, "body").text or ""
 
             load_ms = int((time.time() - start) * 1000)
-
             if search in body_text:
                 self._record(item, status="OK",
                              title=f"Text found: '{search[:40]}'",
                              load_ms=load_ms)
-                log.info(f"  OK ({load_ms}ms) – Text found")
+                log.info(f"  OK ({load_ms}ms) — Text found")
             else:
                 self._record(item, status="FEHLER",
                              error=f"Text not found: '{search[:60]}'",
@@ -490,39 +711,23 @@ class NavigationTester:
         except ValueError:
             seconds = 1.0
         time.sleep(seconds)
-        self._record(item, status="OK",
-                     title=f"Wait {seconds}s")
-        log.info(f"  OK – Wait {seconds}s")
-
-
+        self._record(item, status="OK", title=f"Wait {seconds}s")
+        log.info(f"  OK — Wait {seconds}s")
 
     def _wait_for_dom_stable(self, pre_url: str = "", pre_fp: str = "",
                               timeout: float = 8.0,
                               stable_for: float = 0.25) -> None:
-        """
-        Wait until the page has settled after a click or key press.
-
-        Strategy (in order):
-          1. If the URL changed  → wait for <body> to be present.
-          2. If the DOM fingerprint changed  → done immediately.
-          3. Poll until the fingerprint is stable for `stable_for` seconds
-             or `timeout` is reached.
-        """
         deadline = time.time() + timeout
         try:
-            # Give the browser a single tick to start reacting
             time.sleep(0.05)
-
             current_url = self.driver.current_url
             if pre_url and current_url != pre_url:
                 WebDriverWait(self.driver, timeout).until(
                     EC.presence_of_element_located((By.TAG_NAME, "body")))
                 return
-
             last_fp = dom_fingerprint(self.driver)
             if pre_fp and last_fp != pre_fp:
-                return  # DOM already changed – good enough
-
+                return
             stable_since = time.time()
             while time.time() < deadline:
                 time.sleep(0.1)
@@ -531,57 +736,43 @@ class NavigationTester:
                     last_fp = fp
                     stable_since = time.time()
                 elif time.time() - stable_since >= stable_for:
-                    return  # stable for long enough
+                    return
         except Exception:
-            pass  # never let a wait helper crash the test
+            pass
 
     def _check_error_page(self) -> str:
         try:
+            # Chrome-interne Fehlerseite
+            if self.driver.current_url.startswith("chrome-error://"):
+                return "Browser-Fehlerseite (chrome-error)"
             title = (self.driver.title or "").lower()
-            for err in ["404", "not found", "error", "500", "403",
-                        "forbidden", "fehler", "nicht gefunden"]:
+            for err in ["404", "not found", "500", "403", "forbidden",
+                        "fehler", "nicht gefunden",
+                        "nicht erreichbar", "refused", "err_connection"]:
                 if err in title:
                     return f"Title contains '{err}'"
-
-            check = self.driver.execute_script("""
-                const b = document.body;
-                if (!b) return {t:'', v:0, h:0};
-                return {
-                    t: (b.innerText||'').substring(0,500).toLowerCase(),
-                    v: document.querySelectorAll('*:not(script):not(style)').length,
-                    h: b.scrollHeight
-                };
-            """) or {}
-
-            text = check.get("t", "")
-            visible = check.get("v", 0)
-            height = check.get("h", 0)
-
-            if "page not found" in text or "seite nicht gefunden" in text:
-                return "Page not found"
-            if "internal server error" in text:
-                return "Internal Server Error"
-            if "access denied" in text or "zugriff verweigert" in text:
-                return "Access denied"
-            if "chunk load" in text or "chunkloaderror" in text:
-                return "JavaScript chunk error"
-
-            stripped = text.strip()
-            if not stripped and visible < 10:
-                return "Empty page"
-            if height < 50 and not stripped:
-                return "Empty page (body < 50px)"
-
         except Exception:
             pass
         return ""
+
+    def _check_page_loaded(self) -> str:
+        try:
+            result = self.driver.execute_script("""
+                const body = document.body;
+                if (!body) return 'Kein Body-Element';
+                const text = (body.innerText || '').trim();
+                if (text.length < 30) return 'Seite erscheint leer';
+                return '';
+            """)
+            return result or ""
+        except Exception:
+            return ""
 
     def _record(self, item: NavigationItem, status: str,
                 error: str = "", title: str = "", load_ms: int = 0):
         error = error.replace("\n", " ").replace("\r", "")
         if status == "FEHLER":
             log.info(f"  ERROR: {error}")
-
         self.results.append(NavigationResult(
             status=status, error_detail=error, url=item.url,
             page_title=title, method=item.method,
@@ -591,27 +782,3 @@ class NavigationTester:
             timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         ))
 
-
-CSV_COLUMNS = [
-    "status", "error_detail", "method", "description",
-    "url", "page_title", "element_text", "source_url",
-    "http_status", "load_time_ms", "depth", "timestamp",
-]
-
-
-def export_to_csv(results: list[NavigationResult], output_path: str):
-    sorted_results = sorted(
-        results,
-        key=lambda r: r.timestamp)
-
-    with open(output_path, "w", newline="", encoding="utf-8-sig") as f:
-        writer = csv.DictWriter(f, fieldnames=CSV_COLUMNS,
-                                delimiter=";", quoting=csv.QUOTE_ALL)
-        writer.writeheader()
-        for r in sorted_results:
-            row = asdict(r)
-            writer.writerow({k: row[k] for k in CSV_COLUMNS})
-
-    err = sum(1 for r in results if r.status == "FEHLER")
-    ok = sum(1 for r in results if r.status == "OK")
-    log.info(f"CSV: {output_path} ({err} errors, {ok} OK)")
