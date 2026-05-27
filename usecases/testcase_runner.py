@@ -1,4 +1,3 @@
-import os
 import time
 from datetime import datetime
 
@@ -24,21 +23,10 @@ from usecases.testcase_reader import load_testcases
 from usecases.testcase_writer import save_testcase
 from usecases.testcase_recorder import SessionRecorder
 
-TESTRESULTS_DIR = os.path.join("files", "testresults")
-
-
-def _testresults_dir() -> str:
-    import sys
-    d = os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])),
-                     TESTRESULTS_DIR)
-    os.makedirs(d, exist_ok=True)
-    return d
-
-
 def run_test(app, tc_names: list[str], headless: bool = True):
     from adapters.browser.driver import start_browser, quit_browser
     from adapters.browser.login import login
-    from adapters.database.testresults import save_results, export_to_csv
+    from adapters.database.testresults import save_results
 
     try:
         all_items = []
@@ -89,8 +77,6 @@ def run_test(app, tc_names: list[str], headless: bool = True):
             driver=app.driver, items=all_items)
         app.results = tester.test_all()
 
-        csv_path = os.path.join(_testresults_dir(), f"{result_name}.csv")
-        export_to_csv(app.results, csv_path)
         save_results(result_name, app.results)
 
         ok  = sum(1 for r in app.results if r.status == "OK")
@@ -121,7 +107,7 @@ def run_automated_cli():
     from adapters.database.testcases import list_automated_testcases
     from adapters.browser.driver import start_browser, quit_browser
     from adapters.browser.login import login
-    from adapters.database.testresults import save_results, export_to_csv
+    from adapters.database.testresults import save_results
 
     names = list_automated_testcases()
     if not names:
@@ -155,8 +141,6 @@ def run_automated_cli():
         result_name = f"{ts} - {', '.join(names)}"
         results     = NavigationTester(driver=driver, items=all_items).test_all()
 
-        csv_path = os.path.join(_testresults_dir(), f"{result_name}.csv")
-        export_to_csv(results, csv_path)
         save_results(result_name, results)
 
         ok  = sum(1 for r in results if r.status == "OK")
