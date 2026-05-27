@@ -1,14 +1,14 @@
-import hashlib
+﻿import hashlib
 import logging
 from dataclasses import dataclass
 
 log = logging.getLogger("bugula")
-log.setLevel(logging.CRITICAL)
+log.setLevel(logging.DEBUG)
 
 
 @dataclass
 class NavigationItem:
-    """Typed structure for YAML testcase step."""
+    """Typed structure for a single testcase step."""
     url: str
     method: str
     description: str
@@ -23,7 +23,7 @@ class NavigationItem:
 
 @dataclass
 class NavigationResult:
-    """Typed structure for test result, written to CSV."""
+    """Typed structure for a test result."""
     status: str = ""
     error_detail: str = ""
     url: str = ""
@@ -78,21 +78,6 @@ TABLE_ROW_SELECTORS = [
     "tr[routerlink]",
 ]
 
-
-def dom_fingerprint(driver) -> str:
-    try:
-        result = driver.execute_script("""
-            const body = document.body;
-            if (!body) return '';
-            return body.innerHTML.length + '|' +
-                   document.querySelectorAll('*').length + '|' +
-                   (document.title || '');
-        """)
-        return hashlib.md5((result or "").encode()).hexdigest()
-    except Exception:
-        return ""
-
-
 COOKIE_ACCEPT_SELECTORS = [
     "button[id*='accept']", "button[id*='cookie']",
     "button[class*='accept']", "button[class*='consent']",
@@ -106,6 +91,20 @@ COOKIE_BANNER_TEXTS = [
     "alle akzeptieren", "akzeptieren", "accept all", "accept",
     "allow all", "zustimmen", "einverstanden", "ok", "i agree",
 ]
+
+
+def dom_fingerprint(driver) -> str:
+    try:
+        result = driver.execute_script("""
+            const body = document.body;
+            if (!body) return '';
+            return body.innerHTML.length + '|' +
+                   document.querySelectorAll('*').length + '|' +
+                   (document.title || '');
+        """)
+        return hashlib.md5((result or "").encode()).hexdigest()
+    except Exception:
+        return ""
 
 
 def dismiss_cookie_banner(driver) -> bool:
@@ -125,7 +124,8 @@ def dismiss_cookie_banner(driver) -> bool:
         pass
 
     try:
-        for btn in driver.find_elements(By.CSS_SELECTOR, "button, a[role='button']"):
+        for btn in driver.find_elements(
+                By.CSS_SELECTOR, "button, a[role='button']"):
             try:
                 if not btn.is_displayed():
                     continue
@@ -140,3 +140,4 @@ def dismiss_cookie_banner(driver) -> bool:
         pass
 
     return False
+
