@@ -7,9 +7,10 @@ from interfaces.style import apply_theme, color_titlebar
 from interfaces.view_testing   import ViewTesting
 from interfaces.view_recording import ViewRecording
 from interfaces.view_results   import ViewResults
+from interfaces.view_settings  import ViewSettings
 
 
-class BugulaApp(ViewTesting, ViewRecording, ViewResults):
+class BugulaApp(ViewTesting, ViewRecording, ViewResults, ViewSettings):
 
     def __init__(self):
         self.root = tk.Tk()
@@ -45,9 +46,10 @@ class BugulaApp(ViewTesting, ViewRecording, ViewResults):
         self.nav_frame.grid_propagate(False)
         tk.Frame(self.nav_frame, bg=NAV_BG, height=12).pack()
 
-        for key, label in [("testing", "Testing"),
-                            ("record",  "Recording"),
-                            ("results", "Results")]:
+        for key, label in [("testing",  "Testing"),
+                            ("record",   "Recording"),
+                            ("results",  "Results"),
+                            ("settings", "Settings")]:
             btn = tk.Label(
                 self.nav_frame, text=label, bg=NAV_BG, fg=NAV_FG,
                 font=(FONT, 11), anchor="w", padx=16, pady=10,
@@ -74,9 +76,11 @@ class BugulaApp(ViewTesting, ViewRecording, ViewResults):
         # Build all views
         self.build_sub(self.sub_container)
         ViewResults.build_sub(self, self.sub_container)
+        ViewSettings.build_sub(self, self.sub_container)
         self.build_content(self.content_frame)
         ViewRecording.build_content(self, self.content_frame)
         ViewResults.build_content(self, self.content_frame)
+        ViewSettings.build_content(self, self.content_frame)
 
     def _show_section(self, section: str):
         if self._current_section == "testing":
@@ -103,6 +107,10 @@ class BugulaApp(ViewTesting, ViewRecording, ViewResults):
             self.sub_results.pack(fill=tk.BOTH, expand=True)
             self.content_results.pack(fill=tk.BOTH, expand=True)
             self._refresh_results_list()
+        elif section == "settings":
+            self.sub_settings.pack(fill=tk.BOTH, expand=True)
+            self.content_settings.pack(fill=tk.BOTH, expand=True)
+            self._settings_show_first()
 
     def run(self):
         self.root.mainloop()

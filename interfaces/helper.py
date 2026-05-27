@@ -40,8 +40,8 @@ def divider(parent: tk.Widget, pady: int = 10):
 
 
 def get_categories() -> list[str]:
-    raw = os.environ.get("BUGULA_CATEGORIES", "")
-    return [c.strip() for c in raw.split(",") if c.strip()]
+    from adapters.database.settings import get_categories as _db_cats
+    return _db_cats()
 
 
 def results_dir() -> str:

@@ -4,6 +4,11 @@
 def create_tables():
     conn = get_connection()
     conn.executescript("""
+        CREATE TABLE IF NOT EXISTS settings (
+            key   TEXT PRIMARY KEY,
+            value TEXT NOT NULL DEFAULT ''
+        );
+
         CREATE TABLE IF NOT EXISTS testcases (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
             name       TEXT    NOT NULL UNIQUE,

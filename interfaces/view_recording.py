@@ -37,9 +37,9 @@ class ViewRecording:
         r = _row("Category")
         self._rec_category = tk.StringVar()
         categories = get_categories()
-        cat_combo = ttk.Combobox(r, textvariable=self._rec_category,
-                                 values=categories, state="readonly")
-        cat_combo.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self._rec_cat_combo = ttk.Combobox(r, textvariable=self._rec_category,
+                                           values=categories, state="readonly")
+        self._rec_cat_combo.pack(side=tk.LEFT, fill=tk.X, expand=True)
         if categories:
             self._rec_category.set(categories[0])
 
