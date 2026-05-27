@@ -82,7 +82,7 @@ def run_test(app, tc_names: list[str], headless: bool = True):
         if not app.running:
             return
 
-        ts = datetime.now().strftime("%y.%m.%d - %H.%M Uhr")
+        ts = datetime.now().strftime("%y.%m.%d - %H:%M")
         result_name = f"{ts} - {', '.join(tc_names)}"
 
         tester = NavigationTester(
@@ -96,6 +96,15 @@ def run_test(app, tc_names: list[str], headless: bool = True):
         ok  = sum(1 for r in app.results if r.status == "OK")
         err = sum(1 for r in app.results if r.status == "FEHLER")
         log.info(f"Done — {ok} OK, {err} errors")
+        if err:
+            from adapters.email_notifier import send_failure_alert
+            try:
+                send_failure_alert(result_name, app.results)
+            except Exception as mail_exc:
+                log.error(f"Email alert failed: {mail_exc}")
+                from tkinter import messagebox
+                app.root.after(0, lambda e=mail_exc: messagebox.showerror(
+                    "Email Alert", f"Failed to send alert email:\n{e}"))
         app.root.after(0, app._refresh_results_list)
 
     except Exception as e:
@@ -142,7 +151,7 @@ def run_automated_cli():
         login(driver, url, username, password)
         dismiss_cookie_banner(driver)
 
-        ts          = datetime.now().strftime("%y.%m.%d - %H.%M Uhr")
+        ts          = datetime.now().strftime("%y.%m.%d - %H:%M")
         result_name = f"{ts} - {', '.join(names)}"
         results     = NavigationTester(driver=driver, items=all_items).test_all()
 
@@ -153,6 +162,9 @@ def run_automated_cli():
         ok  = sum(1 for r in results if r.status == "OK")
         err = sum(1 for r in results if r.status == "FEHLER")
         print(f"Done — {ok} OK, {err} errors  |  {result_name}")
+        if err:
+            from adapters.email_notifier import send_failure_alert
+            send_failure_alert(result_name, results, automated=True)
 
     except Exception as e:
         print(f"ERROR: {e}")
@@ -742,9 +754,8 @@ class NavigationTester:
 
     def _check_error_page(self) -> str:
         try:
-            # Chrome-interne Fehlerseite
             if self.driver.current_url.startswith("chrome-error://"):
-                return "Browser-Fehlerseite (chrome-error)"
+                return "Browser error page (chrome-error)"
             title = (self.driver.title or "").lower()
             for err in ["404", "not found", "500", "403", "forbidden",
                         "fehler", "nicht gefunden",

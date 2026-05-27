@@ -3,11 +3,11 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog
 from datetime import datetime
 
-from interfaces.style import BG, BG2, FG, FG_SEC, ACCENT, BORDER, FONT
+from interfaces.style import BG, BG2, FG, FG_SEC, ACCENT, BORDER, FONT, RED
 from interfaces.helper import add_tooltip
 
 
-_NAV_ITEMS = ["Backup", "Presets"]
+_NAV_ITEMS = ["Backup", "E-Mail Alerts", "Presets"]
 
 
 class ViewSettings:
@@ -29,8 +29,9 @@ class ViewSettings:
     def build_content(self, parent: tk.Frame):
         self.content_settings = tk.Frame(parent, bg=BG)
 
-        self._settings_backup_frame   = self._build_backup_panel(self.content_settings)
+        self._settings_backup_frame     = self._build_backup_panel(self.content_settings)
         self._settings_categories_frame = self._build_categories_panel(self.content_settings)
+        self._settings_email_frame      = self._build_email_panel(self.content_settings)
 
     # ------------------------------------------------------------------
     # Backup panel
@@ -48,8 +49,10 @@ class ViewSettings:
         tk.Label(inner, text="Save a copy of the current database to a file.",
                  bg=BG, fg=FG_SEC, font=(FONT, 10), anchor="w").pack(anchor="w", pady=(0, 10))
 
-        backup_btn = tk.Label(inner, text="⬇  Save backup…", bg=ACCENT, fg="#ffffff",
-                              font=(FONT, 10, "bold"), cursor="hand2", padx=12, pady=6)
+        backup_btn = tk.Label(inner, text="⬇  Save backup", bg=BG2, fg=FG,
+                              font=(FONT, 10, "bold"), cursor="hand2", padx=12, pady=6,
+                              relief="flat", highlightthickness=1,
+                              highlightbackground=BORDER)
         backup_btn.pack(anchor="w")
         backup_btn.bind("<Button-1>", lambda _: self._on_backup_db())
 
@@ -63,7 +66,7 @@ class ViewSettings:
                  text="Load a backup file. The current database will be overwritten.",
                  bg=BG, fg=FG_SEC, font=(FONT, 10), anchor="w").pack(anchor="w", pady=(0, 10))
 
-        restore_btn = tk.Label(inner, text="⬆  Restore backup…", bg=BG2, fg=FG,
+        restore_btn = tk.Label(inner, text="⬆  Restore backup", bg=BG2, fg=FG,
                                font=(FONT, 10, "bold"), cursor="hand2", padx=12, pady=6,
                                relief="flat", highlightthickness=1,
                                highlightbackground=BORDER)
@@ -207,6 +210,126 @@ class ViewSettings:
             pass
 
     # ------------------------------------------------------------------
+    # E-Mail Alerts panel
+    # ------------------------------------------------------------------
+
+    def _build_email_panel(self, parent: tk.Frame) -> tk.Frame:
+        frame = tk.Frame(parent, bg=BG)
+        inner = tk.Frame(frame, bg=BG)
+        inner.pack(fill=tk.BOTH, expand=True, padx=24, pady=24)
+
+        tk.Label(inner, text="E-Mail Alerts", bg=BG, fg=FG,
+                 font=(FONT, 13, "bold"), anchor="w").pack(anchor="w", pady=(0, 4))
+        tk.Frame(inner, bg=BORDER, height=1).pack(fill=tk.X, pady=(0, 16))
+
+        self._email_enabled_var = tk.BooleanVar()
+        tk.Checkbutton(
+            inner, text="Enable alerts", variable=self._email_enabled_var,
+            bg=BG, fg=FG, selectcolor=BG2, activebackground=BG,
+            font=(FONT, 10), anchor="w"
+        ).pack(anchor="w", pady=(0, 4))
+
+        self._email_automated_only_var = tk.BooleanVar()
+        tk.Checkbutton(
+            inner, text="Only alert for automated test cases",
+            variable=self._email_automated_only_var,
+            bg=BG, fg=FG_SEC, selectcolor=BG2, activebackground=BG,
+            font=(FONT, 10), anchor="w"
+        ).pack(anchor="w", pady=(0, 14))
+
+        def _row(label):
+            row = tk.Frame(inner, bg=BG)
+            row.pack(fill=tk.X, pady=3)
+            tk.Label(row, text=label, bg=BG, fg=FG_SEC,
+                     font=(FONT, 10), width=18, anchor="w").pack(side=tk.LEFT)
+            e = tk.Entry(row, bg=BG2, fg=FG, font=(FONT, 10),
+                         insertbackground=ACCENT, relief="flat",
+                         highlightthickness=1, highlightbackground=BORDER)
+            e.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=4, padx=(0, 2))
+            return e
+
+        self._email_host_entry      = _row("SMTP Host")
+        self._email_port_entry      = _row("SMTP Port")
+        self._email_user_entry      = _row("Username")
+
+        pw_row = tk.Frame(inner, bg=BG)
+        pw_row.pack(fill=tk.X, pady=3)
+        tk.Label(pw_row, text="Password", bg=BG, fg=FG_SEC,
+                 font=(FONT, 10), width=18, anchor="w").pack(side=tk.LEFT)
+        self._email_pass_entry = tk.Entry(
+            pw_row, bg=BG2, fg=FG, font=(FONT, 10),
+            insertbackground=ACCENT, relief="flat",
+            highlightthickness=1, highlightbackground=BORDER, show="•")
+        self._email_pass_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=4, padx=(0, 2))
+
+        self._email_recipient_entry = _row("Recipient")
+
+        ssl_row = tk.Frame(inner, bg=BG)
+        ssl_row.pack(anchor="w", pady=(6, 0))
+        self._email_ssl_var = tk.BooleanVar()
+        tk.Checkbutton(
+            ssl_row, text="Use SSL (port 465) instead of STARTTLS (port 587)",
+            variable=self._email_ssl_var,
+            bg=BG, fg=FG_SEC, selectcolor=BG2, activebackground=BG,
+            font=(FONT, 10)
+        ).pack(side=tk.LEFT)
+
+        btn_row = tk.Frame(inner, bg=BG)
+        btn_row.pack(anchor="w", pady=(18, 0))
+
+        save_btn = tk.Label(btn_row, text="Save", bg=ACCENT, fg="#ffffff",
+                            font=(FONT, 10, "bold"), cursor="hand2", padx=12, pady=6)
+        save_btn.pack(side=tk.LEFT, padx=(0, 8))
+        save_btn.bind("<Button-1>", lambda _: self._on_email_save())
+
+        test_btn = tk.Label(btn_row, text="Test connection", bg=BG2, fg=FG,
+                            font=(FONT, 10), cursor="hand2", padx=12, pady=6,
+                            relief="flat", highlightthickness=1, highlightbackground=BORDER)
+        test_btn.pack(side=tk.LEFT)
+        test_btn.bind("<Button-1>", lambda _: self._on_email_test())
+
+        self._email_status_lbl = tk.Label(inner, text="", bg=BG, fg=FG_SEC,
+                                          font=(FONT, 10), anchor="w")
+        self._email_status_lbl.pack(anchor="w", pady=(8, 0))
+
+        return frame
+
+    def _refresh_email_panel(self):
+        from adapters.crypto import get_email_setting
+        self._email_enabled_var.set(get_email_setting("email_enabled", "0") == "1")
+        self._email_automated_only_var.set(get_email_setting("email_automated_only", "0") == "1")
+        self._email_host_entry.delete(0, tk.END)
+        self._email_host_entry.insert(0, get_email_setting("email_smtp_host", ""))
+        self._email_port_entry.delete(0, tk.END)
+        self._email_port_entry.insert(0, get_email_setting("email_smtp_port", "587"))
+        self._email_user_entry.delete(0, tk.END)
+        self._email_user_entry.insert(0, get_email_setting("email_smtp_user", ""))
+        self._email_pass_entry.delete(0, tk.END)
+        self._email_pass_entry.insert(0, get_email_setting("email_smtp_pass", ""))
+        self._email_recipient_entry.delete(0, tk.END)
+        self._email_recipient_entry.insert(0, get_email_setting("email_recipient", ""))
+        self._email_ssl_var.set(get_email_setting("email_use_ssl", "0") == "1")
+
+    def _on_email_save(self):
+        from adapters.crypto import set_email_setting
+        set_email_setting("email_enabled",        "1" if self._email_enabled_var.get() else "0")
+        set_email_setting("email_automated_only", "1" if self._email_automated_only_var.get() else "0")
+        set_email_setting("email_smtp_host",      self._email_host_entry.get().strip())
+        set_email_setting("email_smtp_port",      self._email_port_entry.get().strip() or "587")
+        set_email_setting("email_smtp_user",      self._email_user_entry.get().strip())
+        set_email_setting("email_smtp_pass",      self._email_pass_entry.get())
+        set_email_setting("email_recipient",      self._email_recipient_entry.get().strip())
+        set_email_setting("email_use_ssl",        "1" if self._email_ssl_var.get() else "0")
+        self._email_status_lbl.config(text="Settings saved.", fg=ACCENT)
+
+    def _on_email_test(self):
+        self._on_email_save()
+        from adapters.email_notifier import test_connection
+        ok, msg = test_connection()
+        color = ACCENT if ok else RED
+        self._email_status_lbl.config(text=msg, fg=color)
+
+    # ------------------------------------------------------------------
     # Navigation
     # ------------------------------------------------------------------
 
@@ -217,11 +340,15 @@ class ViewSettings:
         item = _NAV_ITEMS[sel[0]]
         self._settings_backup_frame.pack_forget()
         self._settings_categories_frame.pack_forget()
+        self._settings_email_frame.pack_forget()
         if item == "Backup":
             self._settings_backup_frame.pack(fill=tk.BOTH, expand=True)
         elif item == "Presets":
             self._refresh_cat_listbox()
             self._settings_categories_frame.pack(fill=tk.BOTH, expand=True)
+        elif item == "E-Mail Alerts":
+            self._refresh_email_panel()
+            self._settings_email_frame.pack(fill=tk.BOTH, expand=True)
 
     def _settings_show_first(self):
         self._settings_nav.selection_clear(0, tk.END)
