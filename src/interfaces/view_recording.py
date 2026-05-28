@@ -7,6 +7,43 @@ from interfaces.helper import divider, get_categories
 
 class ViewRecording:
 
+    def build_sub(self, parent: tk.Frame):
+        from interfaces.style import SUB_BG, SUB_SEL_BG, SUB_SEL_FG
+        self.sub_record = tk.Frame(parent, bg=SUB_BG)
+
+        tk.Label(self.sub_record, text="URL Presets", bg=SUB_BG, fg=FG_SEC,
+                 font=(FONT, 9), anchor="w").pack(
+            anchor="w", padx=(10, 4), pady=(8, 2))
+
+        self._rec_preset_listbox = tk.Listbox(
+            self.sub_record, bg=SUB_BG, fg=FG,
+            selectbackground=SUB_SEL_BG, selectforeground=SUB_SEL_FG,
+            font=(FONT, 11), borderwidth=0, highlightthickness=0,
+            activestyle="none", relief="flat", exportselection=False)
+        self._rec_preset_listbox.pack(
+            fill=tk.BOTH, expand=True, padx=(10, 4), pady=4)
+        self._rec_preset_listbox.bind(
+            "<<ListboxSelect>>", self._on_rec_preset_select)
+
+    def _refresh_record_presets(self):
+        from adapters.database.presets import list_presets
+        self._rec_preset_listbox.delete(0, tk.END)
+        for name in list_presets():
+            self._rec_preset_listbox.insert(tk.END, name)
+
+    def _on_rec_preset_select(self, _=None):
+        sel = self._rec_preset_listbox.curselection()
+        if not sel:
+            return
+        name = self._rec_preset_listbox.get(sel[0])
+        from adapters.database.presets import get_preset
+        preset = get_preset(name)
+        if not preset:
+            return
+        self._rec_url.set(preset["url"])
+        self._rec_user.set(preset["username"])
+        self._rec_pass.set(preset["password"])
+
     def build_content(self, parent: tk.Frame):
         self.content_record = tk.Frame(parent, bg=BG)
 

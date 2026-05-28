@@ -29,9 +29,11 @@ class ViewSettings:
     def build_content(self, parent: tk.Frame):
         self.content_settings = tk.Frame(parent, bg=BG)
 
-        self._settings_backup_frame     = self._build_backup_panel(self.content_settings)
-        self._settings_categories_frame = self._build_categories_panel(self.content_settings)
-        self._settings_email_frame      = self._build_email_panel(self.content_settings)
+        self._settings_backup_frame       = self._build_backup_panel(self.content_settings)
+        self._settings_presets_home_frame = self._build_presets_home_panel(self.content_settings)
+        self._settings_categories_frame   = self._build_categories_panel(self.content_settings)
+        self._settings_url_presets_frame  = self._build_url_presets_panel(self.content_settings)
+        self._settings_email_frame        = self._build_email_panel(self.content_settings)
 
     # ------------------------------------------------------------------
     # Backup panel
@@ -119,8 +121,40 @@ class ViewSettings:
             messagebox.showerror("Restore failed", str(e))
 
     # ------------------------------------------------------------------
-    # Categories panel
+    # Presets panels
     # ------------------------------------------------------------------
+
+    def _build_presets_home_panel(self, parent: tk.Frame) -> tk.Frame:
+        frame = tk.Frame(parent, bg=BG)
+        inner = tk.Frame(frame, bg=BG)
+        inner.pack(fill=tk.BOTH, expand=True, padx=24, pady=24)
+
+        tk.Label(inner, text="Presets", bg=BG, fg=FG,
+                 font=(FONT, 13, "bold"), anchor="w").pack(anchor="w", pady=(0, 4))
+        tk.Frame(inner, bg=BORDER, height=1).pack(fill=tk.X, pady=(0, 20))
+
+        def _card(title, desc, command):
+            card = tk.Frame(inner, bg=BG2, cursor="hand2",
+                            highlightthickness=1, highlightbackground=BORDER)
+            card.pack(fill=tk.X, pady=(0, 10))
+            card_inner = tk.Frame(card, bg=BG2)
+            card_inner.pack(fill=tk.X, padx=16, pady=12)
+            tk.Label(card_inner, text=title, bg=BG2, fg=FG,
+                     font=(FONT, 11, "bold"), anchor="w").pack(anchor="w")
+            tk.Label(card_inner, text=desc, bg=BG2, fg=FG_SEC,
+                     font=(FONT, 10), anchor="w").pack(anchor="w", pady=(2, 0))
+            for w in [card, card_inner] + list(card_inner.winfo_children()):
+                w.bind("<Button-1>", lambda _, cmd=command: cmd())
+            return card
+
+        _card("Categories",
+              "Manage categories for assigning testcases.",
+              self._show_settings_categories)
+        _card("URL Presets",
+              "Saved URLs with login credentials.",
+              self._show_settings_url_presets)
+
+        return frame
 
     def _build_categories_panel(self, parent: tk.Frame) -> tk.Frame:
         from interfaces.style import SUB_SEL_BG, SUB_SEL_FG
@@ -130,10 +164,10 @@ class ViewSettings:
 
         tk.Label(inner, text="Categories", bg=BG, fg=FG,
                  font=(FONT, 13, "bold"), anchor="w").pack(anchor="w", pady=(0, 4))
-        tk.Frame(inner, bg=BORDER, height=1).pack(fill=tk.X, pady=(0, 16))
+        tk.Frame(inner, bg=BORDER, height=1).pack(fill=tk.X, pady=(0, 10))
 
         tk.Label(inner, text="Categories available when assigning testcases.",
-                 bg=BG, fg=FG_SEC, font=(FONT, 10), anchor="w").pack(anchor="w", pady=(0, 10))
+                 bg=BG, fg=FG_SEC, font=(FONT, 10), anchor="w").pack(anchor="w", pady=(0, 6))
 
         list_frame = tk.Frame(inner, bg=BG)
         list_frame.pack(fill=tk.BOTH, expand=True)
@@ -160,6 +194,91 @@ class ViewSettings:
         del_lbl.pack(side=tk.LEFT)
         del_lbl.bind("<Button-1>", lambda _: self._on_cat_delete())
         add_tooltip(del_lbl, "Delete selected")
+
+        return frame
+
+    def _build_url_presets_panel(self, parent: tk.Frame) -> tk.Frame:
+        from interfaces.style import SUB_SEL_BG, SUB_SEL_FG
+        self._preset_selected_name = ""
+        frame = tk.Frame(parent, bg=BG)
+        inner = tk.Frame(frame, bg=BG)
+        inner.pack(fill=tk.BOTH, expand=True, padx=24, pady=24)
+
+        tk.Label(inner, text="URL Presets", bg=BG, fg=FG,
+                 font=(FONT, 13, "bold"), anchor="w").pack(anchor="w", pady=(0, 4))
+
+        tk.Frame(inner, bg=BORDER, height=1).pack(fill=tk.X, pady=(0, 10))
+
+        tk.Label(inner, text="Saved URLs with login credentials.",
+                 bg=BG, fg=FG_SEC, font=(FONT, 10), anchor="w").pack(anchor="w", pady=(0, 8))
+
+        preset_area = tk.Frame(inner, bg=BG)
+        preset_area.pack(fill=tk.BOTH, expand=True)
+
+        left = tk.Frame(preset_area, bg=BG)
+        left.pack(side=tk.LEFT, fill=tk.Y)
+
+        self._preset_listbox = tk.Listbox(
+            left, bg=BG2, fg=FG,
+            selectbackground=SUB_SEL_BG, selectforeground=SUB_SEL_FG,
+            font=(FONT, 11), borderwidth=0, highlightthickness=1,
+            highlightbackground=BORDER,
+            activestyle="none", relief="flat", exportselection=False,
+            width=22)
+        self._preset_listbox.pack(fill=tk.BOTH, expand=True)
+        self._preset_listbox.bind("<<ListboxSelect>>", self._on_preset_select)
+
+        bar = tk.Frame(left, bg=BG)
+        bar.pack(fill=tk.X, pady=(4, 0))
+
+        add_lbl = tk.Label(bar, text="+", bg=BG, fg=FG,
+                           font=(FONT, 14, "bold"), cursor="hand2")
+        add_lbl.pack(side=tk.LEFT, padx=(0, 6))
+        add_lbl.bind("<Button-1>", lambda _: self._on_preset_new())
+
+        del_lbl = tk.Label(bar, text="−", bg=BG, fg=FG,
+                           font=(FONT, 14, "bold"), cursor="hand2")
+        del_lbl.pack(side=tk.LEFT)
+        del_lbl.bind("<Button-1>", lambda _: self._on_preset_delete())
+
+        right = tk.Frame(preset_area, bg=BG)
+        right.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(16, 0))
+
+        def _field(label, show=None):
+            row = tk.Frame(right, bg=BG)
+            row.pack(fill=tk.X, pady=3)
+            tk.Label(row, text=label, bg=BG, fg=FG_SEC,
+                     font=(FONT, 10), width=10, anchor="w").pack(side=tk.LEFT)
+            kw = dict(bg=BG2, fg=FG, font=(FONT, 10), insertbackground=ACCENT,
+                      relief="flat", highlightthickness=1, highlightbackground=BORDER)
+            if show:
+                kw["show"] = show
+            e = tk.Entry(row, **kw)
+            e.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=4)
+            return e
+
+        self._preset_name_entry = _field("Name")
+        self._preset_url_entry  = _field("URL")
+        self._preset_user_entry = _field("Username")
+        self._preset_pass_entry = _field("Password", show="•")
+
+        btn_row = tk.Frame(right, bg=BG)
+        btn_row.pack(anchor="w", pady=(10, 0))
+
+        save_btn = tk.Label(btn_row, text="Save", bg=ACCENT, fg="#ffffff",
+                            font=(FONT, 10, "bold"), cursor="hand2", padx=12, pady=6)
+        save_btn.pack(side=tk.LEFT, padx=(0, 8))
+        save_btn.bind("<Button-1>", lambda _: self._on_preset_save())
+
+        del_btn = tk.Label(btn_row, text="Delete", bg=BG2, fg=FG,
+                           font=(FONT, 10), cursor="hand2", padx=12, pady=6,
+                           relief="flat", highlightthickness=1, highlightbackground=BORDER)
+        del_btn.pack(side=tk.LEFT)
+        del_btn.bind("<Button-1>", lambda _: self._on_preset_delete())
+
+        self._preset_status_lbl = tk.Label(right, text="", bg=BG, fg=FG_SEC,
+                                           font=(FONT, 10), anchor="w")
+        self._preset_status_lbl.pack(anchor="w", pady=(6, 0))
 
         return frame
 
@@ -196,6 +315,74 @@ class ViewSettings:
         set_categories(cats)
         self._refresh_cat_listbox()
         self._sync_category_combo()
+
+    def _refresh_preset_list(self):
+        from adapters.database.presets import list_presets
+        self._preset_listbox.delete(0, tk.END)
+        for name in list_presets():
+            self._preset_listbox.insert(tk.END, name)
+
+    def _on_preset_select(self, _=None):
+        sel = self._preset_listbox.curselection()
+        if not sel:
+            return
+        name = self._preset_listbox.get(sel[0])
+        from adapters.database.presets import get_preset
+        preset = get_preset(name)
+        if not preset:
+            return
+        self._preset_selected_name = name
+        for entry, key in [
+            (self._preset_name_entry, "name"),
+            (self._preset_url_entry,  "url"),
+            (self._preset_user_entry, "username"),
+            (self._preset_pass_entry, "password"),
+        ]:
+            entry.delete(0, tk.END)
+            entry.insert(0, preset[key])
+        self._preset_status_lbl.config(text="")
+
+    def _on_preset_new(self):
+        self._preset_listbox.selection_clear(0, tk.END)
+        self._preset_selected_name = ""
+        for e in (self._preset_name_entry, self._preset_url_entry,
+                  self._preset_user_entry, self._preset_pass_entry):
+            e.delete(0, tk.END)
+        self._preset_status_lbl.config(text="")
+        self._preset_name_entry.focus_set()
+
+    def _on_preset_save(self):
+        name = self._preset_name_entry.get().strip()
+        if not name:
+            self._preset_status_lbl.config(text="Name is required.", fg=RED)
+            return
+        url  = self._preset_url_entry.get().strip()
+        user = self._preset_user_entry.get().strip()
+        pw   = self._preset_pass_entry.get()
+        from adapters.database.presets import upsert_preset, delete_preset
+        old = self._preset_selected_name
+        upsert_preset(name, url, user, pw)
+        if old and old != name:
+            delete_preset(old)
+        self._refresh_preset_list()
+        self._preset_selected_name = name
+        for i in range(self._preset_listbox.size()):
+            if self._preset_listbox.get(i) == name:
+                self._preset_listbox.selection_set(i)
+                self._preset_listbox.see(i)
+                break
+        self._preset_status_lbl.config(text="Saved.", fg=ACCENT)
+
+    def _on_preset_delete(self):
+        name = self._preset_selected_name or self._preset_name_entry.get().strip()
+        if not name:
+            return
+        if not messagebox.askyesno("Delete", f"Delete preset '{name}'?"):
+            return
+        from adapters.database.presets import delete_preset
+        delete_preset(name)
+        self._refresh_preset_list()
+        self._on_preset_new()
 
     def _sync_category_combo(self):
         from interfaces.helper import get_categories
@@ -333,22 +520,35 @@ class ViewSettings:
     # Navigation
     # ------------------------------------------------------------------
 
+    def _hide_all_settings_panels(self):
+        for f in (self._settings_backup_frame, self._settings_presets_home_frame,
+                  self._settings_categories_frame, self._settings_url_presets_frame,
+                  self._settings_email_frame):
+            f.pack_forget()
+
     def _on_settings_nav_select(self, _=None):
         sel = self._settings_nav.curselection()
         if not sel:
             return
         item = _NAV_ITEMS[sel[0]]
-        self._settings_backup_frame.pack_forget()
-        self._settings_categories_frame.pack_forget()
-        self._settings_email_frame.pack_forget()
+        self._hide_all_settings_panels()
         if item == "Backup":
             self._settings_backup_frame.pack(fill=tk.BOTH, expand=True)
         elif item == "Presets":
-            self._refresh_cat_listbox()
-            self._settings_categories_frame.pack(fill=tk.BOTH, expand=True)
+            self._settings_presets_home_frame.pack(fill=tk.BOTH, expand=True)
         elif item == "E-Mail Alerts":
             self._refresh_email_panel()
             self._settings_email_frame.pack(fill=tk.BOTH, expand=True)
+
+    def _show_settings_categories(self):
+        self._hide_all_settings_panels()
+        self._refresh_cat_listbox()
+        self._settings_categories_frame.pack(fill=tk.BOTH, expand=True)
+
+    def _show_settings_url_presets(self):
+        self._hide_all_settings_panels()
+        self._refresh_preset_list()
+        self._settings_url_presets_frame.pack(fill=tk.BOTH, expand=True)
 
     def _settings_show_first(self):
         self._settings_nav.selection_clear(0, tk.END)

@@ -19,6 +19,14 @@ def create_tables():
             updated_at TEXT    NOT NULL DEFAULT (datetime('now'))
         );
 
+        CREATE TABLE IF NOT EXISTS presets (
+            id       INTEGER PRIMARY KEY AUTOINCREMENT,
+            name     TEXT    NOT NULL UNIQUE,
+            url      TEXT    NOT NULL DEFAULT '',
+            username TEXT    NOT NULL DEFAULT '',
+            password TEXT    NOT NULL DEFAULT ''
+        );
+
         CREATE TABLE IF NOT EXISTS testresults (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
             run_name     TEXT    NOT NULL,

@@ -75,6 +75,7 @@ class App(ViewTesting, ViewRecording, ViewResults, ViewSettings):
 
         # Build all views
         self.build_sub(self.sub_container)
+        ViewRecording.build_sub(self, self.sub_container)
         ViewResults.build_sub(self, self.sub_container)
         ViewSettings.build_sub(self, self.sub_container)
         self.build_content(self.content_frame)
@@ -102,7 +103,9 @@ class App(ViewTesting, ViewRecording, ViewResults, ViewSettings):
             self.content_testing.pack(fill=tk.BOTH, expand=True)
             self._refresh_tc_list()
         elif section == "record":
+            self.sub_record.pack(fill=tk.BOTH, expand=True)
             self.content_record.pack(fill=tk.BOTH, expand=True)
+            self._refresh_record_presets()
         elif section == "results":
             self.sub_results.pack(fill=tk.BOTH, expand=True)
             self.content_results.pack(fill=tk.BOTH, expand=True)
