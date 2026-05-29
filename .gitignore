@@ -1,6 +1,14 @@
-.env
+#environment & secrets
+.env 
+
+#claude code configuration
 .claude
-.csv
-.xml
+
+#database in project folder
 *.db
-*pycache*
+
+# python compiled files
+__pycache__/
+
+# Encryption keys
+.key
