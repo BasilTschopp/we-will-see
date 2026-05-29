@@ -1,15 +1,23 @@
+import sys
 from pathlib import Path
 
-_KEY_FILE = Path.home() / ".app" / "secret.key"
+def _key_file() -> Path:
+    if getattr(sys, "frozen", False):
+        base = Path(sys.executable).parent
+    else:
+        base = Path(__file__).parent.parent.parent
+    p = base / "data" / "secret.key"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    return p
 
 
 def _key() -> bytes:
-    if _KEY_FILE.exists():
-        return _KEY_FILE.read_bytes()
-    _KEY_FILE.parent.mkdir(parents=True, exist_ok=True)
+    f = _key_file()
+    if f.exists():
+        return f.read_bytes()
     from cryptography.fernet import Fernet
     k = Fernet.generate_key()
-    _KEY_FILE.write_bytes(k)
+    f.write_bytes(k)
     return k
 
 
