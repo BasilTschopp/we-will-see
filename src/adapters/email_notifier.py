@@ -32,7 +32,7 @@ def send_failure_alert(run_name: str, results, *, automated: bool = False) -> No
         log.warning("Email alert: SMTP host or recipient not configured.")
         return
 
-    failures = [r for r in results if r.status == "FEHLER"]
+    failures = [r for r in results if r.status == "ERROR"]
     if not failures:
         log.info("Email alert: no failures, nothing to send.")
         return

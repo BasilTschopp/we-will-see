@@ -144,11 +144,11 @@ class ViewResults:
         self.csv_tree.delete(*self.csv_tree.get_children())
         for idx, r in enumerate(sorted(results, key=lambda x: x.timestamp)):
             time_str = r.timestamp.split(" ", 1)[1] if " " in r.timestamp else r.timestamp
-            status   = "Error" if r.status == "FEHLER" else "OK"
+            status   = "Error" if r.status == "ERROR" else "OK"
             error    = r.error_detail.replace("\n", " ").replace("\r", "")
             desc     = r.description.replace("\n", " — ").replace("\r", "")
             ms       = str(r.load_time_ms) if r.load_time_ms else ""
-            color_tag = "err" if r.status == "FEHLER" else "ok"
+            color_tag = "err" if r.status == "ERROR" else "ok"
             tags = (color_tag, "stripe") if idx % 2 == 1 else (color_tag,)
             self.csv_tree.insert("", tk.END,
                                  values=(time_str, status, ms, desc, error),

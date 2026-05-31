@@ -86,7 +86,7 @@ def _run_sequential(app, tc_names: list[str], headless: bool):
         save_results(result_name, app.results)
 
         ok  = sum(1 for r in app.results if r.status == "OK")
-        err = sum(1 for r in app.results if r.status == "FEHLER")
+        err = sum(1 for r in app.results if r.status == "ERROR")
         log.info(f"Done — {ok} OK, {err} errors")
         if err:
             from adapters.email_notifier import send_failure_alert
@@ -170,7 +170,7 @@ def _run_single_tc(app, name: str, headless: bool):
         save_results(result_name, results)
 
         ok  = sum(1 for r in results if r.status == "OK")
-        err = sum(1 for r in results if r.status == "FEHLER")
+        err = sum(1 for r in results if r.status == "ERROR")
         log.info(f"Done [{name}] — {ok} OK, {err} errors")
 
         if err:
@@ -246,7 +246,7 @@ def _run_single_tc_cli(name: str):
         save_results(result_name, results)
 
         ok  = sum(1 for r in results if r.status == "OK")
-        err = sum(1 for r in results if r.status == "FEHLER")
+        err = sum(1 for r in results if r.status == "ERROR")
         print(f"[{name}] Done — {ok} OK, {err} errors  |  {result_name}")
 
         if err:
@@ -381,12 +381,12 @@ class NavigationTester:
                 if handler:
                     handler(item)
             except Exception as e:
-                self._record(item, status="FEHLER",
+                self._record(item, status="ERROR",
                              error=f"Unexpected error: {str(e)[:200]}")
 
 
         ok  = sum(1 for r in self.results if r.status == "OK")
-        err = sum(1 for r in self.results if r.status == "FEHLER")
+        err = sum(1 for r in self.results if r.status == "ERROR")
         log.info(f"\n{'='*50}")
         log.info(f"RESULT: {ok} OK  /  {err} ERRORS  /  {total} Total")
         log.info(f"{'='*50}")
@@ -457,25 +457,25 @@ class NavigationTester:
             expected_host = urlparse(item.url).netloc
             final_host    = urlparse(self.driver.current_url).netloc
             if expected_host and final_host and final_host != expected_host:
-                self._record(item, status="FEHLER",
+                self._record(item, status="ERROR",
                              error=f"Redirect zu fremdem Host: {final_host}",
                              title=title, load_ms=load_ms)
                 return
 
             error = self._check_error_page() or self._check_page_loaded()
             if error:
-                self._record(item, status="FEHLER",
+                self._record(item, status="ERROR",
                              error=error,
                              title=title, load_ms=load_ms)
             else:
                 self._record(item, status="OK", title=title, load_ms=load_ms)
                 log.info(f"  OK ({load_ms}ms) — {title[:60]}")
         except TimeoutException:
-            self._record(item, status="FEHLER",
+            self._record(item, status="ERROR",
                          error="Timeout — page did not load",
                          load_ms=int((time.time() - start) * 1000))
         except WebDriverException as e:
-            self._record(item, status="FEHLER",
+            self._record(item, status="ERROR",
                          error=f"Browser error: {str(e)[:150]}",
                          load_ms=int((time.time() - start) * 1000))
 
@@ -491,18 +491,18 @@ class NavigationTester:
                 title = self.driver.title or ""
                 error = self._check_error_page()
                 if error:
-                    self._record(item, status="FEHLER",
+                    self._record(item, status="ERROR",
                                  error=f"Error page after click: {error}",
                                  title=title, load_ms=load_ms)
                 else:
                     self._record(item, status="OK", title=title, load_ms=load_ms)
                     log.info(f"  OK ({load_ms}ms) — {title[:60]}")
             else:
-                self._record(item, status="FEHLER",
+                self._record(item, status="ERROR",
                              error=f"Element '{item.element_text}' not clickable",
                              load_ms=load_ms)
         except Exception as e:
-            self._record(item, status="FEHLER", error=str(e)[:200],
+            self._record(item, status="ERROR", error=str(e)[:200],
                          load_ms=int((time.time() - start) * 1000))
 
     def _test_modal(self, item: NavigationItem):
@@ -532,11 +532,11 @@ class NavigationTester:
                                  title=f"DOM change via '{item.element_text}'",
                                  load_ms=load_ms)
             else:
-                self._record(item, status="FEHLER",
+                self._record(item, status="ERROR",
                              error=f"Modal trigger '{item.element_text}' not clickable",
                              load_ms=load_ms)
         except Exception as e:
-            self._record(item, status="FEHLER", error=str(e)[:200],
+            self._record(item, status="ERROR", error=str(e)[:200],
                          load_ms=int((time.time() - start) * 1000))
 
     def _test_tab(self, item: NavigationItem):
@@ -555,11 +555,11 @@ class NavigationTester:
                              load_ms=load_ms)
                 log.info(f"  Tab OK ({load_ms}ms)")
             else:
-                self._record(item, status="FEHLER",
+                self._record(item, status="ERROR",
                              error=f"Tab '{item.element_text}' not clickable",
                              load_ms=load_ms)
         except Exception as e:
-            self._record(item, status="FEHLER", error=str(e)[:200],
+            self._record(item, status="ERROR", error=str(e)[:200],
                          load_ms=int((time.time() - start) * 1000))
 
     def _test_pagination(self, item: NavigationItem):
@@ -578,11 +578,11 @@ class NavigationTester:
                              load_ms=load_ms)
                 log.info(f"  Pagination OK ({load_ms}ms)")
             else:
-                self._record(item, status="FEHLER",
+                self._record(item, status="ERROR",
                              error=f"Pagination '{item.element_text}' not clickable",
                              load_ms=load_ms)
         except Exception as e:
-            self._record(item, status="FEHLER", error=str(e)[:200],
+            self._record(item, status="ERROR", error=str(e)[:200],
                          load_ms=int((time.time() - start) * 1000))
 
     def _test_table_row(self, item: NavigationItem):
@@ -654,11 +654,11 @@ class NavigationTester:
                 self._record(item, status="OK", title=title, load_ms=load_ms)
                 log.info(f"  Row OK ({load_ms}ms)")
             else:
-                self._record(item, status="FEHLER",
+                self._record(item, status="ERROR",
                              error="No clickable table row found",
                              load_ms=load_ms)
         except Exception as e:
-            self._record(item, status="FEHLER", error=str(e)[:200],
+            self._record(item, status="ERROR", error=str(e)[:200],
                          load_ms=int((time.time() - start) * 1000))
 
     def _test_form_input(self, item: NavigationItem):
@@ -705,11 +705,11 @@ class NavigationTester:
                              load_ms=load_ms)
                 log.info(f"  OK ({load_ms}ms) — Input in {item.selector}")
             else:
-                self._record(item, status="FEHLER",
+                self._record(item, status="ERROR",
                              error=f"Field '{item.selector}' not visible",
                              load_ms=load_ms)
         except Exception as e:
-            self._record(item, status="FEHLER",
+            self._record(item, status="ERROR",
                          error=f"Field '{item.selector}': {str(e)[:150]}",
                          load_ms=int((time.time() - start) * 1000))
 
@@ -751,18 +751,18 @@ class NavigationTester:
                     title = "Click executed"
                 error = self._check_error_page()
                 if error:
-                    self._record(item, status="FEHLER",
+                    self._record(item, status="ERROR",
                                  error=f"Error page after click: {error}",
                                  load_ms=load_ms)
                 else:
                     self._record(item, status="OK", title=title, load_ms=load_ms)
                     log.info(f"  OK ({load_ms}ms) — {title[:60]}")
             else:
-                self._record(item, status="FEHLER",
+                self._record(item, status="ERROR",
                              error=f"Element '{item.selector}' not clickable",
                              load_ms=load_ms)
         except Exception as e:
-            self._record(item, status="FEHLER",
+            self._record(item, status="ERROR",
                          error=f"Klick '{item.selector}': {str(e)[:150]}",
                          load_ms=int((time.time() - start) * 1000))
 
@@ -774,7 +774,7 @@ class NavigationTester:
                 self._wait_for_dom_stable()
             search = item.assert_text or item.input_value
             if not search:
-                self._record(item, status="FEHLER",
+                self._record(item, status="ERROR",
                              error="No assert_text defined")
                 return
             if item.selector:
@@ -796,11 +796,11 @@ class NavigationTester:
                              load_ms=load_ms)
                 log.info(f"  OK ({load_ms}ms) — Text found")
             else:
-                self._record(item, status="FEHLER",
+                self._record(item, status="ERROR",
                              error=f"Text not found: '{search[:60]}'",
                              load_ms=load_ms)
         except Exception as e:
-            self._record(item, status="FEHLER",
+            self._record(item, status="ERROR",
                          error=f"Assert: {str(e)[:150]}",
                          load_ms=int((time.time() - start) * 1000))
 
@@ -869,7 +869,7 @@ class NavigationTester:
     def _record(self, item: NavigationItem, status: str,
                 error: str = "", title: str = "", load_ms: int = 0):
         error = error.replace("\n", " ").replace("\r", "")
-        if status == "FEHLER":
+        if status == "ERROR":
             log.info(f"  ERROR: {error}")
         self.results.append(NavigationResult(
             status=status, error_detail=error, url=item.url,
