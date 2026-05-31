@@ -24,6 +24,13 @@ from usecases.testcase_writer import save_testcase
 from usecases.testcase_recorder import SessionRecorder
 
 def run_test(app, tc_names: list[str], headless: bool = True):
+    if len(tc_names) == 1:
+        _run_sequential(app, tc_names, headless)
+    else:
+        _run_parallel(app, tc_names, headless)
+
+
+def _run_sequential(app, tc_names: list[str], headless: bool):
     from adapters.browser.driver import start_browser, quit_browser
     from adapters.browser.login import login
     from adapters.database.testresults import save_results
@@ -73,8 +80,7 @@ def run_test(app, tc_names: list[str], headless: bool = True):
         ts = datetime.now().strftime("%y.%m.%d - %H:%M")
         result_name = f"{ts} - {', '.join(tc_names)}"
 
-        tester = NavigationTester(
-            driver=app.driver, items=all_items)
+        tester = NavigationTester(driver=app.driver, items=all_items)
         app.results = tester.test_all()
 
         save_results(result_name, app.results)
@@ -103,33 +109,129 @@ def run_test(app, tc_names: list[str], headless: bool = True):
         app.root.after(0, app._set_running, False)
 
 
-def run_automated_cli():
-    from adapters.database.testcases import list_automated_testcases
+def _run_parallel(app, tc_names: list[str], headless: bool):
+    import threading
+
+    threads = [
+        threading.Thread(
+            target=_run_single_tc,
+            args=(app, name, headless),
+            daemon=True,
+        )
+        for name in tc_names
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    app.running = False
+    app.root.after(0, app._set_running, False)
+    app.root.after(0, app._refresh_results_list)
+
+
+def _run_single_tc(app, name: str, headless: bool):
     from adapters.browser.driver import start_browser, quit_browser
     from adapters.browser.login import login
     from adapters.database.testresults import save_results
+
+    driver = None
+    try:
+        items, meta = load_testcases(name)
+        url          = meta.get("url", "")
+        browser_name = meta.get("browser", "chrome").strip().lower()
+        username     = str(meta.get("username", "")).strip()
+        password     = str(meta.get("password", "")).strip()
+        private      = bool(meta.get("private", False))
+
+        if not url:
+            log.error(f"[{name}] No URL found in YAML meta.")
+            return
+
+        if browser_name not in ("chrome", "edge", "firefox"):
+            browser_name = "chrome"
+
+        driver = start_browser(headless=headless, browser=browser_name, private=private)
+        app.drivers.append(driver)
+
+        if not app.running:
+            return
+
+        login(driver, url, username, password)
+        dismiss_cookie_banner(driver)
+
+        if not app.running:
+            return
+
+        ts = datetime.now().strftime("%y.%m.%d - %H:%M")
+        result_name = f"{ts} - {name}"
+
+        results = NavigationTester(driver=driver, items=items).test_all()
+        save_results(result_name, results)
+
+        ok  = sum(1 for r in results if r.status == "OK")
+        err = sum(1 for r in results if r.status == "FEHLER")
+        log.info(f"Done [{name}] — {ok} OK, {err} errors")
+
+        if err:
+            from adapters.email_notifier import send_failure_alert
+            try:
+                send_failure_alert(result_name, results)
+            except Exception as mail_exc:
+                log.error(f"Email alert failed [{name}]: {mail_exc}")
+
+    except Exception as e:
+        log.error(f"Error [{name}]: {e}")
+    finally:
+        if driver is not None:
+            try:
+                app.drivers.remove(driver)
+            except ValueError:
+                pass
+            quit_browser(driver)
+
+
+def run_automated_cli():
+    import threading
+    from adapters.database.testcases import list_automated_testcases
 
     names = list_automated_testcases()
     if not names:
         print("No automated testcases defined.")
         return
 
-    print(f"Running {len(names)} automated testcase(s): {', '.join(names)}")
+    print(f"Running {len(names)} automated testcase(s) in parallel: {', '.join(names)}")
+
+    threads = [
+        threading.Thread(target=_run_single_tc_cli, args=(name,), daemon=True)
+        for name in names
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    print("All automated testcases completed.")
+
+
+def _run_single_tc_cli(name: str):
+    from adapters.browser.driver import start_browser, quit_browser
+    from adapters.browser.login import login
+    from adapters.database.testresults import save_results
+
     driver = None
     try:
-        all_items, url, browser_name, username, password, private = [], "", "chrome", "", "", False
-        for name in names:
-            items, meta = load_testcases(name)
-            all_items.extend(items)
-            if meta.get("url"):      url          = meta["url"]
-            if meta.get("browser"):  browser_name = meta["browser"].strip().lower()
-            if meta.get("username"): username     = str(meta["username"]).strip()
-            if meta.get("password"): password     = str(meta["password"]).strip()
-            if meta.get("private"):  private      = bool(meta["private"])
+        items, meta = load_testcases(name)
+        url          = meta.get("url", "")
+        browser_name = meta.get("browser", "chrome").strip().lower()
+        username     = str(meta.get("username", "")).strip()
+        password     = str(meta.get("password", "")).strip()
+        private      = bool(meta.get("private", False))
 
         if not url:
-            print("ERROR: No URL found in testcases.")
+            print(f"ERROR [{name}]: No URL found in testcase.")
             return
+
         if browser_name not in ("chrome", "edge", "firefox"):
             browser_name = "chrome"
 
@@ -137,22 +239,23 @@ def run_automated_cli():
         login(driver, url, username, password)
         dismiss_cookie_banner(driver)
 
-        ts          = datetime.now().strftime("%y.%m.%d - %H:%M")
-        result_name = f"{ts} - {', '.join(names)}"
-        results     = NavigationTester(driver=driver, items=all_items).test_all()
+        ts = datetime.now().strftime("%y.%m.%d - %H:%M")
+        result_name = f"{ts} - {name}"
 
+        results = NavigationTester(driver=driver, items=items).test_all()
         save_results(result_name, results)
 
         ok  = sum(1 for r in results if r.status == "OK")
         err = sum(1 for r in results if r.status == "FEHLER")
-        print(f"Done — {ok} OK, {err} errors  |  {result_name}")
+        print(f"[{name}] Done — {ok} OK, {err} errors  |  {result_name}")
+
         if err:
             from adapters.email_notifier import send_failure_alert
             send_failure_alert(result_name, results, automated=True)
 
     except Exception as e:
-        print(f"ERROR: {e}")
-        log.error(f"CLI run error: {e}")
+        print(f"ERROR [{name}]: {e}")
+        log.error(f"CLI run error [{name}]: {e}")
     finally:
         quit_browser(driver)
 

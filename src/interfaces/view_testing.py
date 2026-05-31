@@ -319,6 +319,9 @@ class ViewTesting:
     def _on_stop(self):
         from adapters.browser.driver import quit_browser
         self.running = False
+        for driver in list(self.drivers):
+            quit_browser(driver)
+        self.drivers.clear()
         quit_browser(self.driver)
         self.driver = None
 

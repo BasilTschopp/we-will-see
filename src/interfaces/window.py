@@ -22,6 +22,7 @@ class App(ViewTesting, ViewRecording, ViewResults, ViewSettings):
 
         self.running  = False
         self.driver   = None
+        self.drivers: list = []
         self.recorder = None
         self.results: list[NavigationResult] = []
 
