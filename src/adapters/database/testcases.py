@@ -1,16 +1,18 @@
 ﻿from adapters.database.connection import get_connection
 
 
-def upsert_testcase(name: str, yaml_text: str, category: str = "") -> None:
+def upsert_testcase(name: str, yaml_text: str, category: str = "",
+                    comment: str = "") -> None:
     conn = get_connection()
     conn.execute("""
-        INSERT INTO testcases (name, category, yaml_text, updated_at)
-        VALUES (?, ?, ?, datetime('now'))
+        INSERT INTO testcases (name, category, yaml_text, comment, updated_at)
+        VALUES (?, ?, ?, ?, datetime('now'))
         ON CONFLICT(name) DO UPDATE SET
             category   = excluded.category,
             yaml_text  = excluded.yaml_text,
+            comment    = excluded.comment,
             updated_at = datetime('now')
-    """, (name, category, yaml_text))
+    """, (name, category, yaml_text, comment))
     conn.commit()
 
 
@@ -23,6 +25,14 @@ def fetch_testcase_yaml(name: str) -> tuple[str, str]:
     if not row:
         return "", ""
     return row["yaml_text"], row["category"]
+
+
+def fetch_comment(name: str) -> str:
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT comment FROM testcases WHERE name = ?", (name,)
+    ).fetchone()
+    return str(row["comment"] or "") if row else ""
 
 
 def fetch_automated(name: str) -> bool:

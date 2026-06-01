@@ -52,4 +52,11 @@ def create_tables():
         conn.commit()
     except Exception:
         pass
+    # migration: add comment column to existing databases
+    try:
+        conn.execute(
+            "ALTER TABLE testcases ADD COLUMN comment TEXT NOT NULL DEFAULT ''")
+        conn.commit()
+    except Exception:
+        pass
 

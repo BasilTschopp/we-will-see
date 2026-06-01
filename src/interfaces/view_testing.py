@@ -116,10 +116,18 @@ class ViewTesting:
         ).pack(side=tk.LEFT, padx=(4, 0))
 
         self.save_btn = tk.Label(footer, text="💾", bg=BG, fg=FG,
-                                 font=(FONT, 14), cursor="hand2")
-        self.save_btn.pack(side=tk.RIGHT)
+                                 font=(FONT, 13), cursor="hand2")
+        self.save_btn.pack(side=tk.RIGHT, pady=2)
         self.save_btn.bind("<Button-1>", lambda _: self._on_save())
         add_tooltip(self.save_btn, "Save")
+
+        self.comment_btn = tk.Label(footer, text="💬", bg=BG, fg=FG,
+                                    font=(FONT, 13), cursor="hand2")
+        self.comment_btn.pack(side=tk.RIGHT, padx=(0, 4), pady=2)
+        self.comment_btn.bind("<Button-1>", lambda _: self._on_comment())
+        add_tooltip(self.comment_btn, "Comment")
+
+        self._current_comment = ""
 
     # ------------------------------------------------------------------
     # Testcase list
@@ -257,12 +265,13 @@ class ViewTesting:
     # ------------------------------------------------------------------
 
     def _load_into_editor(self, name: str):
-        from adapters.database.testcases import fetch_testcase_yaml, fetch_automated
+        from adapters.database.testcases import fetch_testcase_yaml, fetch_automated, fetch_comment
         yaml_text, _ = fetch_testcase_yaml(name)
         self.editor.delete("1.0", tk.END)
         self.editor.insert("1.0", yaml_text)
         self.editor.edit_modified(False)
         self._current_tc_name = name
+        self._current_comment = fetch_comment(name)
         self.editor_title.configure(text=name, fg=FG)
         self._automated_var.set(fetch_automated(name))
 
@@ -272,13 +281,86 @@ class ViewTesting:
         from adapters.database.testcases import update_automated
         update_automated(self._current_tc_name, self._automated_var.get())
 
+    def _on_comment(self):
+        if not self._current_tc_name:
+            return
+        popup = tk.Toplevel(self.root)
+        popup.withdraw()
+        popup.overrideredirect(True)
+        popup.configure(bg=BORDER)
+        popup.transient(self.root)
+
+        inner = tk.Frame(popup, bg=BG)
+        inner.pack(fill=tk.BOTH, expand=True, padx=1, pady=1)
+
+        header = tk.Label(inner, text="Comment", bg=ACCENT, fg="#ffffff",
+                          font=(FONT, 10, "bold"), anchor="w",
+                          padx=14, pady=10, cursor="fleur")
+        header.pack(fill=tk.X)
+
+        def _start_drag(e):
+            popup._drag_x = e.x_root - popup.winfo_x()
+            popup._drag_y = e.y_root - popup.winfo_y()
+
+        def _drag(e):
+            popup.geometry(f"+{e.x_root - popup._drag_x}+{e.y_root - popup._drag_y}")
+
+        header.bind("<ButtonPress-1>", _start_drag)
+        header.bind("<B1-Motion>",     _drag)
+
+        txt_outer = tk.Frame(inner, bg=BORDER, padx=1, pady=1)
+        txt_outer.pack(fill=tk.BOTH, padx=14, pady=(0, 12))
+        txt = tk.Text(txt_outer, width=44, height=5, font=(MONO, 9),
+                      wrap=tk.WORD, bg=BG2, fg=FG, insertbackground=FG,
+                      relief="flat", padx=8, pady=6,
+                      highlightthickness=0, borderwidth=0)
+        txt.pack()
+        txt.insert("1.0", self._current_comment)
+        txt.focus_set()
+
+        tk.Frame(inner, bg=BORDER, height=1).pack(fill=tk.X)
+
+        btn_row = tk.Frame(inner, bg=BG)
+        btn_row.pack(fill=tk.X, padx=14, pady=10)
+
+        def _apply():
+            self._current_comment = txt.get("1.0", tk.END).rstrip()
+            self.comment_btn.configure(fg=ACCENT if self._current_comment else FG)
+            popup.destroy()
+
+        cancel = tk.Label(btn_row, text="Cancel", bg=BG, fg=FG_SEC,
+                          font=(FONT, 9), cursor="hand2")
+        cancel.pack(side=tk.RIGHT)
+        cancel.bind("<Button-1>", lambda _: popup.destroy())
+
+        save_wrap = tk.Frame(btn_row, bg=ACCENT)
+        save_wrap.pack(side=tk.RIGHT, padx=(0, 10))
+        save = tk.Label(save_wrap, text="Save", bg=ACCENT, fg="#ffffff",
+                        font=(FONT, 9, "bold"), cursor="hand2",
+                        padx=14, pady=5)
+        save.pack()
+        save.bind("<Button-1>", lambda _: _apply())
+
+        popup.update_idletasks()
+        pw = popup.winfo_reqwidth()
+        ph = popup.winfo_reqheight()
+        x = self.comment_btn.winfo_rootx()
+        y = self.comment_btn.winfo_rooty() - ph - 4
+        x = max(0, min(x, self.root.winfo_screenwidth() - pw))
+        y = max(0, min(y, self.root.winfo_screenheight() - ph))
+        popup.geometry(f"{pw}x{ph}+{x}+{y}")
+        popup.deiconify()
+        popup.grab_set()
+        popup.lift()
+        popup.focus_force()
+
     def _on_save(self):
         if not self._current_tc_name:
             return
         content = self.editor.get("1.0", tk.END).rstrip()
         from adapters.database.testcases import fetch_testcase_yaml, upsert_testcase
         _, category = fetch_testcase_yaml(self._current_tc_name)
-        upsert_testcase(self._current_tc_name, content, category)
+        upsert_testcase(self._current_tc_name, content, category, self._current_comment)
         self.save_btn.configure(fg=ACCENT)
         self.root.after(800, lambda: self.save_btn.configure(fg=FG))
 
