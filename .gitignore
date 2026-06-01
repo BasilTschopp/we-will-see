@@ -10,5 +10,9 @@
 # python compiled files
 __pycache__/
 
+# pyinstaller output
+src/build/
+src/dist/
+
 # Encryption keys
 *.key
