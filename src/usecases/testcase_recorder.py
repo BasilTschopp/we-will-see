@@ -24,10 +24,27 @@ _RECORDER_JS = r"""
 
     function bestSelector(el) {
         if (!el || el === document.body) return 'body';
-        if (el.id) return '#' + CSS.escape(el.id);
-        for (const attr of ['data-testid','data-cy','name','aria-label']) {
+        // Skip dynamic UUID-based IDs (e.g. Quasar's f_xxxxxxxx-xxxx-... pattern)
+        if (el.id && !/[0-9a-f]{8}-[0-9a-f]{4}/i.test(el.id)) {
+            return '#' + CSS.escape(el.id);
+        }
+        for (const attr of ['data-test','data-testid','data-cy','name','aria-label']) {
             const v = el.getAttribute(attr);
             if (v) return el.tagName.toLowerCase() + '[' + attr + '="' + v.replace(/"/g,'\\"') + '"]';
+        }
+        // Quasar inputs inside table cells: build stable td-based selector
+        if (el.tagName.toLowerCase() === 'input' && el.classList.contains('q-field__native')) {
+            const td = el.closest('td');
+            const tr = el.closest('tr');
+            if (td && tr) {
+                const tbody = tr.closest('tbody');
+                const rows = tbody ? Array.from(tbody.querySelectorAll('tr')) : [];
+                const tdIdx = Array.from(tr.querySelectorAll('td')).indexOf(td) + 1;
+                const trPart = (rows.length > 0 && rows[rows.length - 1] === tr)
+                    ? 'tr:last-child'
+                    : 'tr:nth-of-type(' + (rows.indexOf(tr) + 1) + ')';
+                return 'tbody ' + trPart + ' td:nth-of-type(' + tdIdx + ') input.q-field__native';
+            }
         }
         const parts = [];
         let cur = el;

@@ -690,6 +690,11 @@ class NavigationTester:
                     "arguments[0].scrollIntoView({block:'center'});", el)
                 el.clear()
                 el.send_keys(item.input_value)
+                self.driver.execute_script(
+                    "arguments[0].dispatchEvent(new Event('input', {bubbles:true}));"
+                    "arguments[0].dispatchEvent(new Event('change', {bubbles:true}));",
+                    el
+                )
                 key_map = {
                     "enter": Keys.ENTER, "return": Keys.RETURN,
                     "tab": Keys.TAB, "escape": Keys.ESCAPE,
@@ -713,6 +718,20 @@ class NavigationTester:
                          error=f"Field '{item.selector}': {str(e)[:150]}",
                          load_ms=int((time.time() - start) * 1000))
 
+    def _find_by_text(self, text: str):
+        escaped = text.replace("'", "\\'")
+        for tag in ("td", "div", "span", "button", "a", "li"):
+            try:
+                els = self.driver.find_elements(
+                    By.XPATH,
+                    f"//{tag}[normalize-space(.)='{escaped}']")
+                for el in els:
+                    if el.is_displayed():
+                        return el
+            except Exception:
+                continue
+        return None
+
     def _test_click(self, item: NavigationItem):
         start = time.time()
         try:
@@ -730,11 +749,23 @@ class NavigationTester:
                                 (By.CSS_SELECTOR, item.selector)))
                     except TimeoutException:
                         pass
-            try:
-                el = WebDriverWait(self.driver, 10).until(
-                    EC.element_to_be_clickable((By.CSS_SELECTOR, item.selector)))
-            except TimeoutException:
-                el = self.driver.find_element(By.CSS_SELECTOR, item.selector)
+            el = None
+            if item.selector:
+                try:
+                    el = WebDriverWait(self.driver, 10).until(
+                        EC.element_to_be_clickable((By.CSS_SELECTOR, item.selector)))
+                except (TimeoutException, Exception):
+                    try:
+                        el = self.driver.find_element(By.CSS_SELECTOR, item.selector)
+                    except Exception:
+                        pass
+            if el is None and item.element_text:
+                el = self._find_by_text(item.element_text)
+            if el is None:
+                self._record(item, status="ERROR",
+                             error=f"Element '{item.selector or item.element_text}' not found",
+                             load_ms=int((time.time() - start) * 1000))
+                return
 
             pre_url = self.driver.current_url
             pre_fp  = dom_fingerprint(self.driver)
