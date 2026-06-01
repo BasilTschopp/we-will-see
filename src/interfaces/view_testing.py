@@ -406,6 +406,7 @@ class ViewTesting:
         self.drivers.clear()
         quit_browser(self.driver)
         self.driver = None
+        self._set_running(False)
 
     def _set_running(self, running: bool):
         self.running = running

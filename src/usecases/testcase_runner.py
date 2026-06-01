@@ -264,7 +264,7 @@ def run_record(app, url: str, tc_name: str,
                browser_name: str = "chrome",
                username: str = "", password: str = "",
                private: bool = False, category: str = "",
-               no_wait: bool = False):
+               no_wait: bool = False, ai_optimize: bool = False):
     from adapters.browser.driver import start_browser, quit_browser
     from adapters.browser.login import login
 
@@ -320,6 +320,23 @@ def run_record(app, url: str, tc_name: str,
 
         log.info(f"Recording saved: {saved_name}")
         app.root.after(0, app._on_record_saved, saved_name)
+
+        from adapters.crypto import get_ai_setting
+        if ai_optimize and get_ai_setting("anthropic_api_key", "").strip():
+            import threading
+            def _optimize(yt=yaml_text, name=saved_name, cat=category):
+                try:
+                    app.root.after(0, app._update_record_status, "AI optimization running...")
+                    from usecases.ai_optimizer import optimize_yaml
+                    optimized = optimize_yaml(yt)
+                    save_testcase(name=f"{name}_KI", yaml_text=optimized, category=cat)
+                    log.info(f"AI-optimized version saved: {name}_KI")
+                    app.root.after(0, app._refresh_tc_list)
+                    app.root.after(0, app._update_record_status, "")
+                except Exception as ai_err:
+                    log.warning(f"AI optimization failed: {ai_err}")
+                    app.root.after(0, app._update_record_status, "")
+            threading.Thread(target=_optimize, daemon=True).start()
 
     except Exception as e:
         log.error(f"Recording error: {e}")

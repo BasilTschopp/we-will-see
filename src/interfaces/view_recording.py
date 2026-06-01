@@ -92,7 +92,13 @@ class ViewRecording:
                 activebackground=BG, activeforeground=ACCENT,
                 font=(FONT, 10)).pack(side=tk.LEFT, padx=(0, 10))
 
-
+        r = _row("AI optimization")
+        self._rec_ai_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(
+            r, variable=self._rec_ai_var,
+            bg=BG, fg=FG, selectcolor=BG,
+            activebackground=BG, activeforeground=ACCENT,
+            font=(FONT, 10)).pack(side=tk.LEFT)
 
         divider(outer, pady=12)
         tk.Label(outer, text="Login (optional)", bg=BG, fg=FG_SEC,
@@ -166,9 +172,12 @@ class ViewRecording:
         self.rec_stop_btn.configure(bg=RED, fg="#ffffff")
         self._rec_status_var.set("Opening browser...")
 
+        ai_optimize = self._rec_ai_var.get()
+
         threading.Thread(
             target=run_record,
-            args=(self, url, name, browser, username, password, private, category, True),
+            args=(self, url, name, browser, username, password, private, category, True,
+                  ai_optimize),
             daemon=True,
         ).start()
 

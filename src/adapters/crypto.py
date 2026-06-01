@@ -52,3 +52,18 @@ def get_email_setting(key: str, default: str = "") -> str:
 def set_email_setting(key: str, value: str) -> None:
     from adapters.database.settings import set_setting
     set_setting(key, encrypt(value))
+
+
+# Convenience wrappers for AI settings
+
+def get_ai_setting(key: str, default: str = "") -> str:
+    from adapters.database.settings import get_setting
+    raw = get_setting(key, "")
+    if not raw:
+        return default
+    return decrypt(raw)
+
+
+def set_ai_setting(key: str, value: str) -> None:
+    from adapters.database.settings import set_setting
+    set_setting(key, encrypt(value))

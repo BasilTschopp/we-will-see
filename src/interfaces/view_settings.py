@@ -7,7 +7,7 @@ from interfaces.style import BG, BG2, FG, FG_SEC, ACCENT, BORDER, FONT, RED
 from interfaces.helper import add_tooltip
 
 
-_NAV_ITEMS = ["Backup", "E-Mail Alerts", "Presets"]
+_NAV_ITEMS = ["AI Integration", "Backup", "E-Mail Alerts", "Presets"]
 
 
 class ViewSettings:
@@ -34,6 +34,7 @@ class ViewSettings:
         self._settings_categories_frame   = self._build_categories_panel(self.content_settings)
         self._settings_url_presets_frame  = self._build_url_presets_panel(self.content_settings)
         self._settings_email_frame        = self._build_email_panel(self.content_settings)
+        self._settings_ai_frame           = self._build_ai_panel(self.content_settings)
 
     # ------------------------------------------------------------------
     # Backup panel
@@ -523,7 +524,7 @@ class ViewSettings:
     def _hide_all_settings_panels(self):
         for f in (self._settings_backup_frame, self._settings_presets_home_frame,
                   self._settings_categories_frame, self._settings_url_presets_frame,
-                  self._settings_email_frame):
+                  self._settings_email_frame, self._settings_ai_frame):
             f.pack_forget()
 
     def _on_settings_nav_select(self, _=None):
@@ -539,6 +540,9 @@ class ViewSettings:
         elif item == "E-Mail Alerts":
             self._refresh_email_panel()
             self._settings_email_frame.pack(fill=tk.BOTH, expand=True)
+        elif item == "AI Integration":
+            self._refresh_ai_panel()
+            self._settings_ai_frame.pack(fill=tk.BOTH, expand=True)
 
     def _show_settings_categories(self):
         self._hide_all_settings_panels()
@@ -549,6 +553,88 @@ class ViewSettings:
         self._hide_all_settings_panels()
         self._refresh_preset_list()
         self._settings_url_presets_frame.pack(fill=tk.BOTH, expand=True)
+
+    # ------------------------------------------------------------------
+    # AI panel
+    # ------------------------------------------------------------------
+
+    def _build_ai_panel(self, parent: tk.Frame) -> tk.Frame:
+        frame = tk.Frame(parent, bg=BG)
+        inner = tk.Frame(frame, bg=BG)
+        inner.pack(fill=tk.BOTH, expand=True, padx=24, pady=24)
+
+        tk.Label(inner, text="AI Optimization", bg=BG, fg=FG,
+                 font=(FONT, 13, "bold"), anchor="w").pack(anchor="w", pady=(0, 4))
+        tk.Frame(inner, bg=BORDER, height=1).pack(fill=tk.X, pady=(0, 16))
+
+        tk.Label(inner,
+                 text="When AI optimization is enabled during recording, an optimized\n"
+                      "version is saved as 'testcase_name_KI'. Requires an Anthropic API key.",
+                 bg=BG, fg=FG_SEC, font=(FONT, 10), anchor="w",
+                 justify="left").pack(anchor="w", pady=(0, 16))
+
+        row = tk.Frame(inner, bg=BG)
+        row.pack(fill=tk.X, pady=3)
+        tk.Label(row, text="API Key", bg=BG, fg=FG_SEC,
+                 font=(FONT, 10), width=10, anchor="w").pack(side=tk.LEFT)
+        self._ai_key_entry = tk.Entry(
+            row, bg=BG2, fg=FG, font=(FONT, 10),
+            insertbackground=ACCENT, relief="flat",
+            highlightthickness=1, highlightbackground=BORDER, show="•")
+        self._ai_key_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=4)
+
+        btn_row = tk.Frame(inner, bg=BG)
+        btn_row.pack(anchor="w", pady=(16, 0))
+
+        save_btn = tk.Label(btn_row, text="Save", bg=ACCENT, fg="#ffffff",
+                            font=(FONT, 10, "bold"), cursor="hand2", padx=12, pady=6)
+        save_btn.pack(side=tk.LEFT, padx=(0, 8))
+        save_btn.bind("<Button-1>", lambda _: self._on_ai_save())
+
+        test_btn = tk.Label(btn_row, text="Test connection", bg=BG2, fg=FG,
+                            font=(FONT, 10), cursor="hand2", padx=12, pady=6,
+                            relief="flat", highlightthickness=1, highlightbackground=BORDER)
+        test_btn.pack(side=tk.LEFT)
+        test_btn.bind("<Button-1>", lambda _: self._on_ai_test())
+
+        self._ai_status_lbl = tk.Label(inner, text="", bg=BG, fg=FG_SEC,
+                                       font=(FONT, 10), anchor="w")
+        self._ai_status_lbl.pack(anchor="w", pady=(10, 0))
+
+        return frame
+
+    def _refresh_ai_panel(self):
+        from adapters.crypto import get_ai_setting
+        self._ai_key_entry.delete(0, tk.END)
+        self._ai_key_entry.insert(0, get_ai_setting("anthropic_api_key", ""))
+        self._ai_status_lbl.config(text="")
+
+    def _on_ai_save(self):
+        from adapters.crypto import set_ai_setting
+        set_ai_setting("anthropic_api_key", self._ai_key_entry.get().strip())
+        self._ai_status_lbl.config(text="Saved.", fg=ACCENT)
+
+    def _on_ai_test(self):
+        self._on_ai_save()
+        key = self._ai_key_entry.get().strip()
+        if not key:
+            self._ai_status_lbl.config(text="No API key entered.", fg=RED)
+            return
+        try:
+            import anthropic
+            client = anthropic.Anthropic(api_key=key)
+            client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=10,
+                messages=[{"role": "user", "content": "ping"}]
+            )
+            self._ai_status_lbl.config(text="Connection successful.", fg=ACCENT)
+        except Exception as e:
+            self._ai_status_lbl.config(text=f"Error: {str(e)[:80]}", fg=RED)
+
+    # ------------------------------------------------------------------
+    # Navigation
+    # ------------------------------------------------------------------
 
     def _settings_show_first(self):
         self._settings_nav.selection_clear(0, tk.END)
