@@ -1,6 +1,7 @@
 import time
 from datetime import datetime
 
+from usecases.value_resolver import resolve_input_value
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.keys import Keys
@@ -689,7 +690,8 @@ class NavigationTester:
                 self.driver.execute_script(
                     "arguments[0].scrollIntoView({block:'center'});", el)
                 el.clear()
-                el.send_keys(item.input_value)
+                resolved = resolve_input_value(item.input_value)
+                el.send_keys(resolved)
                 self.driver.execute_script(
                     "arguments[0].dispatchEvent(new Event('input', {bubbles:true}));"
                     "arguments[0].dispatchEvent(new Event('change', {bubbles:true}));",
@@ -705,7 +707,7 @@ class NavigationTester:
                         el.send_keys(key)
                         self._wait_for_dom_stable()
                 self._record(item, status="OK",
-                             title=f"Input: '{item.input_value[:40]}'"
+                             title=f"Input: '{resolved[:40]}'"
                                    f"{' + ' + item.submit_key if item.submit_key else ''}",
                              load_ms=load_ms)
                 log.info(f"  OK ({load_ms}ms) — Input in {item.selector}")
@@ -803,7 +805,7 @@ class NavigationTester:
             if item.source_url:
                 self.driver.get(item.source_url)
                 self._wait_for_dom_stable()
-            search = item.assert_text or item.input_value
+            search = resolve_input_value(item.assert_text or item.input_value)
             if not search:
                 self._record(item, status="ERROR",
                              error="No assert_text defined")
