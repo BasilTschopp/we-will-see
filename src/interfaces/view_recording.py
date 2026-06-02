@@ -172,6 +172,36 @@ class ViewRecording:
             daemon=True,
         ).start()
 
+    def _show_saving_popup(self):
+        popup = tk.Toplevel(self.root)
+        popup.overrideredirect(True)
+        popup.attributes("-topmost", True)
+
+        # Accent-coloured border via outer frame
+        outer = tk.Frame(popup, bg=ACCENT, padx=2, pady=2)
+        outer.pack()
+
+        inner = tk.Frame(outer, bg=BG, padx=50, pady=30)
+        inner.pack()
+
+        tk.Label(inner, text="⏳", bg=BG, fg=FG,
+                 font=("Segoe UI Emoji", 48)).pack()
+        tk.Label(inner, text="Saving...", bg=BG, fg=FG,
+                 font=(FONT, 13)).pack(pady=(12, 0))
+
+        popup.update_idletasks()
+        rw, rh = self.root.winfo_width(), self.root.winfo_height()
+        rx, ry = self.root.winfo_rootx(), self.root.winfo_rooty()
+        pw, ph = popup.winfo_width(), popup.winfo_height()
+        popup.geometry(f"+{rx + (rw - pw) // 2}+{ry + (rh - ph) // 2}")
+
+        self._saving_popup = popup
+
+    def _hide_saving_popup(self):
+        if popup := getattr(self, "_saving_popup", None):
+            popup.destroy()
+            self._saving_popup = None
+
     def _on_record_stop(self):
         from adapters.browser.driver import quit_browser
         if not self.running:
@@ -181,11 +211,13 @@ class ViewRecording:
         self.rec_start_btn.configure(bg=ACCENT, fg="#ffffff")
         self.rec_stop_btn.configure(bg=BORDER, fg=FG_SEC)
         self._rec_status_var.set("")
+        self._show_saving_popup()
 
     def _update_record_status(self, text: str):
         self._rec_status_var.set(text)
 
     def _on_record_saved(self, name: str):
+        self._hide_saving_popup()
         self._rec_status_var.set(f"Saved: {name}")
         self.rec_start_btn.configure(bg=ACCENT, fg="#ffffff")
         self.rec_stop_btn.configure(bg=BORDER, fg=FG_SEC)
