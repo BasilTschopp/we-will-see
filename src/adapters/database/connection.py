@@ -14,7 +14,7 @@ def _db_path() -> str:
     # __file__ is src/adapters/database/connection.py — go up 3 levels to project root
     project_root = os.path.dirname(os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
-    db_dir = os.path.join(project_root, "database")
+    db_dir = os.path.join(project_root, "data")
     os.makedirs(db_dir, exist_ok=True)
     return os.path.join(db_dir, "app.db")
 
