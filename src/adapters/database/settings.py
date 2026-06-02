@@ -25,3 +25,32 @@ def get_categories() -> list[str]:
 
 def set_categories(cats: list[str]) -> None:
     set_setting("categories", ",".join(cats))
+
+
+_DEFAULT_RELEASE_REGEX    = r"rc-release_([\w.-]+)"
+_DEFAULT_RELEASE_LABEL    = "Release"
+_DEFAULT_RELEASE_SELECTOR = 'input[aria-label="Frontend"]'
+
+
+def get_release_regex() -> str:
+    return get_setting("release_regex", _DEFAULT_RELEASE_REGEX)
+
+
+def set_release_regex(pattern: str) -> None:
+    set_setting("release_regex", pattern)
+
+
+def get_release_label() -> str:
+    return get_setting("release_label", _DEFAULT_RELEASE_LABEL)
+
+
+def set_release_label(label: str) -> None:
+    set_setting("release_label", label)
+
+
+def get_release_selector() -> str:
+    return get_setting("release_selector", _DEFAULT_RELEASE_SELECTOR)
+
+
+def set_release_selector(selector: str) -> None:
+    set_setting("release_selector", selector)

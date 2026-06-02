@@ -1,6 +1,107 @@
 import os
+import re
 import time
 from datetime import datetime
+
+_VERSION_TRIGGER_SELECTORS = [
+    '[data-test="version-btn"]',
+    'button[title="Version"]',
+    '[data-cy="version-btn"]',
+]
+
+
+def _read_release_from_page(driver) -> str:
+    """Read release from a DOM element directly after login.
+
+    If the target element is not yet visible the function tries each selector
+    in _VERSION_TRIGGER_SELECTORS to open the version dialog, reads the value,
+    then closes the dialog with Escape.
+    """
+    try:
+        from adapters.database.settings import get_release_selector, get_release_regex
+        from selenium.webdriver.common.by import By
+        from selenium.webdriver.support.ui import WebDriverWait
+        from selenium.webdriver.support import expected_conditions as EC
+        from selenium.webdriver.common.keys import Keys as _Keys
+        from selenium.webdriver.common.action_chains import ActionChains
+
+        selector = get_release_selector()
+        if not selector:
+            log.warning("_read_release_from_page: no CSS selector configured")
+            return ""
+
+        log.info(f"_read_release_from_page: current URL = {driver.current_url}")
+
+        # --- 1. Try to find the element directly (page may already show it) ---
+        try:
+            el = WebDriverWait(driver, 1).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, selector)))
+            log.info(f"_read_release_from_page: element found directly")
+        except Exception:
+            el = None
+
+        # --- 2. Element not visible – try to open version dialog ---
+        opened_dialog = False
+        if el is None:
+            trigger = None
+            for btn_sel in _VERSION_TRIGGER_SELECTORS:
+                try:
+                    trigger = WebDriverWait(driver, 5).until(
+                        EC.presence_of_element_located(
+                            (By.CSS_SELECTOR, btn_sel)))
+                    log.info(f"_read_release_from_page: found trigger '{btn_sel}'")
+                    break
+                except Exception:
+                    log.info(f"_read_release_from_page: trigger not found: '{btn_sel}'")
+
+            if trigger is None:
+                log.warning("_read_release_from_page: no version trigger found "
+                            f"(tried: {_VERSION_TRIGGER_SELECTORS})")
+                return ""
+
+            try:
+                driver.execute_script("arguments[0].click();", trigger)
+                el = WebDriverWait(driver, 5).until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, selector)))
+                opened_dialog = True
+                log.info("_read_release_from_page: dialog opened, element found")
+            except Exception as exc:
+                log.warning(f"_read_release_from_page: click/wait failed: {exc}")
+                return ""
+
+        # --- 3. Read value ---
+        text = (el.get_attribute("value") or el.text
+                or el.get_attribute("textContent") or "").strip()
+        log.info(f"_read_release_from_page: raw element text = '{text}'")
+
+        # --- 4. Close dialog if we opened it ---
+        if opened_dialog:
+            try:
+                ActionChains(driver).send_keys(_Keys.ESCAPE).perform()
+            except Exception:
+                pass
+
+        # --- 5. Apply regex (group 1 if capturing group present, else full match) ---
+        pattern = get_release_regex()
+        if pattern:
+            m = re.search(pattern, text)
+            if m:
+                result = m.group(1) if m.lastindex else m.group(0)
+            else:
+                result = ""
+        else:
+            result = text
+
+        if result:
+            log.info(f"Release detected: {result}")
+        else:
+            log.warning(f"_read_release_from_page: regex '{pattern}' "
+                        f"did not match '{text}'")
+        return result
+
+    except Exception as exc:
+        log.warning(f"_read_release_from_page failed: {exc}")
+        return ""
 
 from usecases.value_resolver import resolve_input_value
 from selenium.webdriver.common.by import By
@@ -90,11 +191,12 @@ def _run_sequential(app, tc_names: list[str], headless: bool):
 
         ts = datetime.now().strftime("%y.%m.%d - %H:%M")
         result_name = f"{ts} - {', '.join(tc_names)}"
+        release = _read_release_from_page(app.driver)
 
         tester = NavigationTester(driver=app.driver, items=all_items)
         app.results = tester.test_all()
 
-        save_results(result_name, app.results)
+        save_results(result_name, app.results, release)
 
         ok  = sum(1 for r in app.results if r.status == "OK")
         err = sum(1 for r in app.results if r.status == "ERROR")
@@ -176,9 +278,10 @@ def _run_single_tc(app, name: str, headless: bool):
 
         ts = datetime.now().strftime("%y.%m.%d - %H:%M")
         result_name = f"{ts} - {name}"
+        release = _read_release_from_page(driver)
 
         results = NavigationTester(driver=driver, items=items).test_all()
-        save_results(result_name, results)
+        save_results(result_name, results, release)
 
         ok  = sum(1 for r in results if r.status == "OK")
         err = sum(1 for r in results if r.status == "ERROR")
@@ -252,9 +355,10 @@ def _run_single_tc_cli(name: str):
 
         ts = datetime.now().strftime("%y.%m.%d - %H:%M")
         result_name = f"{ts} - {name}"
+        release = _read_release_from_page(driver)
 
         results = NavigationTester(driver=driver, items=items).test_all()
-        save_results(result_name, results)
+        save_results(result_name, results, release)
 
         ok  = sum(1 for r in results if r.status == "OK")
         err = sum(1 for r in results if r.status == "ERROR")

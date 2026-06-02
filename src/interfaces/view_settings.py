@@ -1,13 +1,13 @@
 import sqlite3
 import tkinter as tk
-from tkinter import filedialog, messagebox, simpledialog
+from tkinter import ttk, filedialog, messagebox, simpledialog
 from datetime import datetime
 
 from interfaces.style import BG, BG2, FG, FG_SEC, ACCENT, BORDER, FONT, RED
 from interfaces.helper import add_tooltip
 
 
-_NAV_ITEMS = ["Backup", "E-Mail Alerts", "Presets"]
+_NAV_ITEMS = ["Backup", "E-Mail Alerts", "Presets", "Release"]
 
 
 class ViewSettings:
@@ -34,6 +34,7 @@ class ViewSettings:
         self._settings_categories_frame   = self._build_categories_panel(self.content_settings)
         self._settings_url_presets_frame  = self._build_url_presets_panel(self.content_settings)
         self._settings_email_frame        = self._build_email_panel(self.content_settings)
+        self._settings_release_frame      = self._build_release_panel(self.content_settings)
 
     # ------------------------------------------------------------------
     # Backup panel
@@ -520,10 +521,119 @@ class ViewSettings:
     # Navigation
     # ------------------------------------------------------------------
 
+    def _build_release_panel(self, parent: tk.Frame) -> tk.Frame:
+        from interfaces.style import MONO
+        frame = tk.Frame(parent, bg=BG)
+        inner = tk.Frame(frame, bg=BG)
+        inner.pack(fill=tk.BOTH, expand=True, padx=24, pady=24)
+
+        tk.Label(inner, text="Release Detection", bg=BG, fg=FG,
+                 font=(FONT, 13, "bold"), anchor="w").pack(anchor="w", pady=(0, 4))
+        tk.Frame(inner, bg=BORDER, height=1).pack(fill=tk.X, pady=(0, 16))
+
+        tk.Label(inner,
+                 text="Release-Nummer wird per CSS-Selektor direkt nach dem Login aus der App gelesen.",
+                 bg=BG, fg=FG_SEC, font=(FONT, 10), anchor="w", justify="left"
+                 ).pack(anchor="w", pady=(0, 14))
+
+        def _row(label, widget_factory):
+            row = tk.Frame(inner, bg=BG)
+            row.pack(fill=tk.X, pady=4)
+            tk.Label(row, text=label, bg=BG, fg=FG_SEC,
+                     font=(FONT, 10), width=14, anchor="w").pack(side=tk.LEFT)
+            w = widget_factory(row)
+            w.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=4)
+            return w
+
+        self._release_label_entry = _row(
+            "Display Name",
+            lambda p: tk.Entry(p, bg=BG2, fg=FG, font=(FONT, 10),
+                               insertbackground=ACCENT, relief="flat",
+                               highlightthickness=1, highlightbackground=BORDER))
+
+        self._release_selector_entry = _row(
+            "CSS Selector",
+            lambda p: tk.Entry(p, bg=BG2, fg=FG, font=(FONT, 10),
+                               insertbackground=ACCENT, relief="flat",
+                               highlightthickness=1, highlightbackground=BORDER))
+
+        self._release_regex_entry = _row(
+            "Regex Pattern",
+            lambda p: tk.Entry(p, bg=BG2, fg=FG, font=(FONT, 10),
+                               insertbackground=ACCENT, relief="flat",
+                               highlightthickness=1, highlightbackground=BORDER))
+        tk.Label(inner,
+                 text=r"Beispiel:  rc-release_([\w.-]+)  extrahiert  1.5.0  aus  rc-release_1.5.0",
+                 bg=BG, fg=FG_SEC, font=(MONO, 9), anchor="w"
+                 ).pack(anchor="w", pady=(2, 16))
+
+        btn_row = tk.Frame(inner, bg=BG)
+        btn_row.pack(anchor="w")
+
+        save_btn = tk.Label(btn_row, text="Save", bg=ACCENT, fg="#ffffff",
+                            font=(FONT, 10, "bold"), cursor="hand2", padx=12, pady=6)
+        save_btn.pack(side=tk.LEFT, padx=(0, 8))
+        save_btn.bind("<Button-1>", lambda _: self._on_release_save())
+
+        reset_btn = tk.Label(btn_row, text="Reset to default", bg=BG2, fg=FG,
+                             font=(FONT, 10), cursor="hand2", padx=12, pady=6,
+                             relief="flat", highlightthickness=1, highlightbackground=BORDER)
+        reset_btn.pack(side=tk.LEFT)
+        reset_btn.bind("<Button-1>", lambda _: self._on_release_reset())
+
+        self._release_status_lbl = tk.Label(inner, text="", bg=BG, fg=FG_SEC,
+                                            font=(FONT, 10), anchor="w")
+        self._release_status_lbl.pack(anchor="w", pady=(8, 0))
+
+        return frame
+
+    def _refresh_release_panel(self):
+        from adapters.database.settings import (
+            get_release_regex, get_release_label, get_release_selector)
+        self._release_label_entry.delete(0, tk.END)
+        self._release_label_entry.insert(0, get_release_label())
+        self._release_selector_entry.delete(0, tk.END)
+        self._release_selector_entry.insert(0, get_release_selector())
+        self._release_regex_entry.delete(0, tk.END)
+        self._release_regex_entry.insert(0, get_release_regex())
+        self._release_status_lbl.config(text="")
+
+    def _on_release_save(self):
+        import re as _re
+        from adapters.database.settings import (
+            set_release_regex, set_release_label, set_release_selector)
+
+        pattern = self._release_regex_entry.get().strip()
+        try:
+            _re.compile(pattern)
+        except _re.error as e:
+            self._release_status_lbl.config(text=f"Invalid regex: {e}", fg=RED)
+            return
+
+        set_release_label(self._release_label_entry.get().strip() or "Release")
+        set_release_selector(self._release_selector_entry.get().strip())
+        set_release_regex(pattern)
+        self._release_status_lbl.config(text="Saved.", fg=ACCENT)
+
+    def _on_release_reset(self):
+        from adapters.database.settings import (
+            _DEFAULT_RELEASE_REGEX, _DEFAULT_RELEASE_LABEL, _DEFAULT_RELEASE_SELECTOR,
+            set_release_regex, set_release_label, set_release_selector)
+        set_release_label(_DEFAULT_RELEASE_LABEL)
+        set_release_selector(_DEFAULT_RELEASE_SELECTOR)
+        set_release_regex(_DEFAULT_RELEASE_REGEX)
+        self._release_label_entry.delete(0, tk.END)
+        self._release_label_entry.insert(0, _DEFAULT_RELEASE_LABEL)
+        self._release_selector_entry.delete(0, tk.END)
+        self._release_selector_entry.insert(0, _DEFAULT_RELEASE_SELECTOR)
+        self._release_regex_entry.delete(0, tk.END)
+        self._release_regex_entry.insert(0, _DEFAULT_RELEASE_REGEX)
+        self._release_status_lbl.config(text="Reset to default.", fg=ACCENT)
+
     def _hide_all_settings_panels(self):
         for f in (self._settings_backup_frame, self._settings_presets_home_frame,
                   self._settings_categories_frame, self._settings_url_presets_frame,
-                  self._settings_email_frame):
+                  self._settings_email_frame, self._settings_release_frame):
             f.pack_forget()
 
     def _on_settings_nav_select(self, _=None):
@@ -539,6 +649,9 @@ class ViewSettings:
         elif item == "E-Mail Alerts":
             self._refresh_email_panel()
             self._settings_email_frame.pack(fill=tk.BOTH, expand=True)
+        elif item == "Release":
+            self._refresh_release_panel()
+            self._settings_release_frame.pack(fill=tk.BOTH, expand=True)
 
     def _show_settings_categories(self):
         self._hide_all_settings_panels()

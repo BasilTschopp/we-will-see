@@ -30,6 +30,7 @@ def create_tables():
         CREATE TABLE IF NOT EXISTS testresults (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
             run_name     TEXT    NOT NULL,
+            release      TEXT    NOT NULL DEFAULT '',
             status       TEXT    NOT NULL DEFAULT '',
             error_detail TEXT    NOT NULL DEFAULT '',
             url          TEXT    NOT NULL DEFAULT '',
@@ -56,6 +57,13 @@ def create_tables():
     try:
         conn.execute(
             "ALTER TABLE testcases ADD COLUMN comment TEXT NOT NULL DEFAULT ''")
+        conn.commit()
+    except Exception:
+        pass
+    # migration: add release column to testresults
+    try:
+        conn.execute(
+            "ALTER TABLE testresults ADD COLUMN release TEXT NOT NULL DEFAULT ''")
         conn.commit()
     except Exception:
         pass

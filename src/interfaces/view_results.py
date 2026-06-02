@@ -1,4 +1,4 @@
-﻿import tkinter as tk
+import tkinter as tk
 from tkinter import ttk, messagebox
 
 from models.models import NavigationResult
@@ -10,6 +10,15 @@ class ViewResults:
     def build_sub(self, parent: tk.Frame):
         from interfaces.style import SUB_BG, SUB_SEL_BG, SUB_SEL_FG
         self.sub_results = tk.Frame(parent, bg=SUB_BG)
+
+        # Release filter
+        self._results_release_var = tk.StringVar(value="All")
+        self._results_release_combo = ttk.Combobox(
+            self.sub_results, textvariable=self._results_release_var,
+            values=["All"], state="readonly")
+        self._results_release_combo.pack(fill=tk.X, padx=(10, 4), pady=(6, 2))
+        self._results_release_combo.bind(
+            "<<ComboboxSelected>>", lambda _: self._refresh_results_list())
 
         self.results_listbox = tk.Listbox(
             self.sub_results, bg=SUB_BG, fg=FG,
@@ -84,9 +93,20 @@ class ViewResults:
     # ------------------------------------------------------------------
 
     def _refresh_results_list(self):
-        from adapters.database.testresults import list_runs
+        from adapters.database.testresults import list_runs, list_releases
+
+        releases = list_releases()
+        self._results_release_combo.configure(values=["All"] + releases)
+
+        sel_release = self._results_release_var.get()
+        if sel_release not in ["All"] + releases:
+            sel_release = "All"
+            self._results_release_var.set("All")
+
+        filtered = list_runs(release="" if sel_release == "All" else sel_release)
+
         self.results_listbox.delete(0, tk.END)
-        for name in list_runs():
+        for name in filtered:
             self.results_listbox.insert(tk.END, name)
         if self.results_listbox.size() > 0:
             self.results_listbox.selection_set(0)
@@ -155,6 +175,3 @@ class ViewResults:
             self.csv_tree.insert("", tk.END,
                                  values=(time_str, status, ms, desc, error),
                                  tags=tags)
-
-
-

@@ -1,26 +1,28 @@
-﻿from datetime import datetime
+from datetime import datetime
 
 from models.models import NavigationResult, log
 
 
-def save_results(run_name: str, results: list[NavigationResult]) -> None:
+def save_results(run_name: str, results: list[NavigationResult],
+                 release: str = "") -> None:
     from adapters.database.connection import get_connection
     conn = get_connection()
     for r in results:
         conn.execute("""
             INSERT INTO testresults
-                (run_name, status, error_detail, url, page_title,
+                (run_name, release, status, error_detail, url, page_title,
                  method, description, element_text, source_url,
                  http_status, load_time_ms, depth, timestamp)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (
-            run_name, r.status, r.error_detail, r.url, r.page_title,
+            run_name, release, r.status, r.error_detail, r.url, r.page_title,
             r.method, r.description, r.element_text, r.source_url,
             r.http_status, r.load_time_ms, r.depth,
             r.timestamp or datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         ))
     conn.commit()
-    log.info(f"Results saved to DB: {run_name} ({len(results)} rows)")
+    log.info(f"Results saved to DB: {run_name} ({len(results)} rows)"
+             + (f" [release: {release}]" if release else ""))
 
 
 def fetch_results(run_name: str) -> list[NavigationResult]:
@@ -47,13 +49,31 @@ def fetch_results(run_name: str) -> list[NavigationResult]:
     ]
 
 
-def list_runs() -> list[str]:
+def list_runs(release: str = "") -> list[str]:
+    from adapters.database.connection import get_connection
+    conn = get_connection()
+    if release:
+        rows = conn.execute("""
+            SELECT DISTINCT run_name FROM testresults
+            WHERE release = ?
+            ORDER BY run_name DESC
+        """, (release,)).fetchall()
+    else:
+        rows = conn.execute("""
+            SELECT DISTINCT run_name FROM testresults ORDER BY run_name DESC
+        """).fetchall()
+    return [r["run_name"] for r in rows]
+
+
+def list_releases() -> list[str]:
     from adapters.database.connection import get_connection
     conn = get_connection()
     rows = conn.execute("""
-        SELECT DISTINCT run_name FROM testresults ORDER BY run_name DESC
+        SELECT DISTINCT release FROM testresults
+        WHERE release != ''
+        ORDER BY release DESC
     """).fetchall()
-    return [r["run_name"] for r in rows]
+    return [r["release"] for r in rows]
 
 
 def delete_run(run_name: str) -> None:
@@ -62,3 +82,49 @@ def delete_run(run_name: str) -> None:
     conn.execute("DELETE FROM testresults WHERE run_name = ?", (run_name,))
     conn.commit()
 
+
+def fetch_run_summaries(release: str = "") -> list[dict]:
+    """Returns per-run stats: run_name, release, date, total, errors, pass_pct."""
+    from adapters.database.connection import get_connection
+    conn = get_connection()
+    if release:
+        rows = conn.execute("""
+            SELECT
+                run_name,
+                release,
+                MIN(timestamp)                                      AS date,
+                COUNT(*)                                            AS total,
+                SUM(CASE WHEN status = 'ERROR' THEN 1 ELSE 0 END)  AS errors
+            FROM testresults
+            WHERE release = ?
+            GROUP BY run_name
+            ORDER BY date DESC
+        """, (release,)).fetchall()
+    else:
+        rows = conn.execute("""
+            SELECT
+                run_name,
+                release,
+                MIN(timestamp)                                      AS date,
+                COUNT(*)                                            AS total,
+                SUM(CASE WHEN status = 'ERROR' THEN 1 ELSE 0 END)  AS errors
+            FROM testresults
+            GROUP BY run_name
+            ORDER BY date DESC
+        """).fetchall()
+    result = []
+    for r in rows:
+        total  = r["total"]  or 0
+        errors = r["errors"] or 0
+        ok     = total - errors
+        pct    = round(ok / total * 100) if total else 0
+        result.append({
+            "run_name": r["run_name"],
+            "release":  r["release"] or "",
+            "date":     (r["date"] or "")[:16],
+            "total":    total,
+            "errors":   errors,
+            "ok":       ok,
+            "pass_pct": pct,
+        })
+    return result
