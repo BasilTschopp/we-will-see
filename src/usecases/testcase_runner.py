@@ -1,8 +1,18 @@
+import os
 import time
 from datetime import datetime
 
 from usecases.value_resolver import resolve_input_value
 from selenium.webdriver.common.by import By
+
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_FILES_DIR = os.path.join(_PROJECT_ROOT, "data", "files")
+
+
+def _resolve_file_path(value: str) -> str:
+    if os.path.isabs(value):
+        return value
+    return os.path.join(_FILES_DIR, value)
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
@@ -372,6 +382,7 @@ class NavigationTester:
             "form_input":  self._test_form_input,
             "click":       self._test_click,
             "assert_text": self._test_assert_text,
+            "log_text":    self._test_log_text,
             "wait":        self._test_wait,
         }
 
@@ -683,14 +694,32 @@ class NavigationTester:
                 el = WebDriverWait(self.driver, 10).until(
                     EC.element_to_be_clickable((By.CSS_SELECTOR, item.selector)))
             except TimeoutException:
-                el = self.driver.find_element(By.CSS_SELECTOR, item.selector)
+                # Fallback for hidden elements (e.g. file inputs)
+                try:
+                    el = WebDriverWait(self.driver, 5).until(
+                        EC.presence_of_element_located((By.CSS_SELECTOR, item.selector)))
+                except TimeoutException:
+                    el = self.driver.find_element(By.CSS_SELECTOR, item.selector)
 
             load_ms = int((time.time() - start) * 1000)
-            if el.is_displayed():
-                self.driver.execute_script(
-                    "arguments[0].scrollIntoView({block:'center'});", el)
-                el.clear()
+            # Use JS for type detection – works even on hidden elements
+            is_file_input = self.driver.execute_script(
+                "return arguments[0].type === 'file';", el)
+            if el.is_displayed() or is_file_input:
+                if not is_file_input:
+                    self.driver.execute_script(
+                        "arguments[0].scrollIntoView({block:'center'});", el)
+                    el.clear()
                 resolved = resolve_input_value(item.input_value)
+                if is_file_input:
+                    resolved = _resolve_file_path(resolved)
+                    # Force visibility so Selenium can interact with the hidden input
+                    self.driver.execute_script(
+                        "arguments[0].style.cssText += "
+                        "'; display:block !important; opacity:1 !important; "
+                        "visibility:visible !important;';",
+                        el
+                    )
                 el.send_keys(resolved)
                 self.driver.execute_script(
                     "arguments[0].dispatchEvent(new Event('input', {bubbles:true}));"
@@ -706,8 +735,9 @@ class NavigationTester:
                     if key:
                         el.send_keys(key)
                         self._wait_for_dom_stable()
+                label = os.path.basename(resolved) if is_file_input else resolved[:40]
                 self._record(item, status="OK",
-                             title=f"Input: '{resolved[:40]}'"
+                             title=f"{'File' if is_file_input else 'Input'}: '{label}'"
                                    f"{' + ' + item.submit_key if item.submit_key else ''}",
                              load_ms=load_ms)
                 log.info(f"  OK ({load_ms}ms) — Input in {item.selector}")
@@ -835,6 +865,22 @@ class NavigationTester:
         except Exception as e:
             self._record(item, status="ERROR",
                          error=f"Assert: {str(e)[:150]}",
+                         load_ms=int((time.time() - start) * 1000))
+
+    def _test_log_text(self, item: NavigationItem):
+        start = time.time()
+        try:
+            el = WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, item.selector)))
+            text = (el.text or el.get_attribute("textContent") or "").strip()
+            load_ms = int((time.time() - start) * 1000)
+            self._record(item, status="OK",
+                         title=f"Gelesen: '{text[:80]}'",
+                         load_ms=load_ms)
+            log.info(f"  OK ({load_ms}ms) — Gelesen: {text[:80]}")
+        except Exception as e:
+            self._record(item, status="ERROR",
+                         error=f"Log text '{item.selector}': {str(e)[:150]}",
                          load_ms=int((time.time() - start) * 1000))
 
     def _test_wait(self, item: NavigationItem):
