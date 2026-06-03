@@ -810,35 +810,40 @@ class NavigationTester:
             is_file_input = self.driver.execute_script(
                 "return arguments[0].type === 'file';", el)
             if el.is_displayed() or is_file_input:
-                if not is_file_input:
-                    self.driver.execute_script(
-                        "arguments[0].scrollIntoView({block:'center'});", el)
-                    el.clear()
                 resolved = resolve_input_value(item.input_value)
-                if is_file_input:
-                    resolved = _resolve_file_path(resolved)
-                    # Force visibility so Selenium can interact with the hidden input
+                if resolved:
+                    if not is_file_input:
+                        self.driver.execute_script(
+                            "arguments[0].scrollIntoView({block:'center'});", el)
+                        el.clear()
+                    if is_file_input:
+                        resolved = _resolve_file_path(resolved)
+                        # Force visibility so Selenium can interact with the hidden input
+                        self.driver.execute_script(
+                            "arguments[0].style.cssText += "
+                            "'; display:block !important; opacity:1 !important; "
+                            "visibility:visible !important;';",
+                            el
+                        )
+                    el.send_keys(resolved)
                     self.driver.execute_script(
-                        "arguments[0].style.cssText += "
-                        "'; display:block !important; opacity:1 !important; "
-                        "visibility:visible !important;';",
+                        "arguments[0].dispatchEvent(new Event('input', {bubbles:true}));"
+                        "arguments[0].dispatchEvent(new Event('change', {bubbles:true}));",
                         el
                     )
-                el.send_keys(resolved)
-                self.driver.execute_script(
-                    "arguments[0].dispatchEvent(new Event('input', {bubbles:true}));"
-                    "arguments[0].dispatchEvent(new Event('change', {bubbles:true}));",
-                    el
-                )
                 key_map = {
                     "enter": Keys.ENTER, "return": Keys.RETURN,
                     "tab": Keys.TAB, "escape": Keys.ESCAPE,
+                    "down": Keys.ARROW_DOWN, "up": Keys.ARROW_UP,
                 }
                 if item.submit_key:
-                    key = key_map.get(item.submit_key.lower())
-                    if key:
-                        el.send_keys(key)
-                        self._wait_for_dom_stable()
+                    chain = ActionChains(self.driver)
+                    for k in item.submit_key.lower().split(","):
+                        key = key_map.get(k.strip())
+                        if key:
+                            chain = chain.pause(0.15).send_keys(key)
+                    chain.perform()
+                    self._wait_for_dom_stable()
                 label = os.path.basename(resolved) if is_file_input else resolved[:40]
                 self._record(item, status="OK",
                              title=f"{'File' if is_file_input else 'Input'}: '{label}'"
@@ -908,6 +913,21 @@ class NavigationTester:
             load_ms = int((time.time() - start) * 1000)
 
             if self._safe_click(el):
+                if item.submit_key:
+                    key_map = {
+                        "enter": Keys.ENTER, "return": Keys.RETURN,
+                        "tab": Keys.TAB, "escape": Keys.ESCAPE,
+                        "down": Keys.ARROW_DOWN, "up": Keys.ARROW_UP,
+                    }
+                    chain = ActionChains(self.driver).pause(0.3)
+                    for k in item.submit_key.lower().split(","):
+                        key = key_map.get(k.strip())
+                        if key:
+                            chain = chain.send_keys(key).pause(0.15)
+                    chain.perform()
+                    active = self.driver.switch_to.active_element
+                    log.info(f"  active element after keys: tag={active.tag_name} "
+                             f"class='{active.get_attribute('class') or ''}'")
                 self._wait_for_dom_stable(pre_url=pre_url, pre_fp=pre_fp)
                 post_url = self.driver.current_url
                 if post_url != pre_url:
