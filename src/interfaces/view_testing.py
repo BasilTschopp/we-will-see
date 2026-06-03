@@ -137,9 +137,12 @@ class ViewTesting:
         from adapters.database.testcases import list_testcases
         filter_cat = self._filter_cat_var.get()
         self.tc_listbox.delete(0, tk.END)
-        for name, cat in list_testcases():
-            if filter_cat == "All" or cat == filter_cat:
-                self.tc_listbox.insert(tk.END, name)
+        names = sorted(
+            (name for name, cat in list_testcases()
+             if filter_cat == "All" or cat == filter_cat),
+            key=str.casefold)
+        for name in names:
+            self.tc_listbox.insert(tk.END, name)
         if self.tc_listbox.size() > 0:
             self.tc_listbox.selection_set(0)
             self.tc_listbox.activate(0)
