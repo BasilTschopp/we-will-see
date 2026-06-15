@@ -3,8 +3,8 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, simpledialog
 from datetime import datetime
 
-from interfaces.style import BG, BG2, FG, FG_SEC, ACCENT, BORDER, FONT, RED
-from interfaces.helper import add_tooltip
+from interfaces.style.style import BG, BG2, FG, FG_SEC, ACCENT, BORDER, FONT, RED
+from interfaces.helper.widgets import add_tooltip
 
 
 _NAV_ITEMS = ["Backup", "E-Mail Alerts", "Presets", "Release"]
@@ -13,7 +13,7 @@ _NAV_ITEMS = ["Backup", "E-Mail Alerts", "Presets", "Release"]
 class ViewSettings:
 
     def build_sub(self, parent: tk.Frame):
-        from interfaces.style import SUB_BG, SUB_SEL_BG, SUB_SEL_FG
+        from interfaces.style.style import SUB_BG, SUB_SEL_BG, SUB_SEL_FG
         self.sub_settings = tk.Frame(parent, bg=SUB_BG)
 
         self._settings_nav = tk.Listbox(
@@ -158,7 +158,7 @@ class ViewSettings:
         return frame
 
     def _build_categories_panel(self, parent: tk.Frame) -> tk.Frame:
-        from interfaces.style import SUB_SEL_BG, SUB_SEL_FG
+        from interfaces.style.style import SUB_SEL_BG, SUB_SEL_FG
         frame = tk.Frame(parent, bg=BG)
         inner = tk.Frame(frame, bg=BG)
         inner.pack(fill=tk.BOTH, expand=True, padx=24, pady=24)
@@ -199,7 +199,7 @@ class ViewSettings:
         return frame
 
     def _build_url_presets_panel(self, parent: tk.Frame) -> tk.Frame:
-        from interfaces.style import SUB_SEL_BG, SUB_SEL_FG
+        from interfaces.style.style import SUB_SEL_BG, SUB_SEL_FG
         self._preset_selected_name = ""
         frame = tk.Frame(parent, bg=BG)
         inner = tk.Frame(frame, bg=BG)
@@ -386,7 +386,7 @@ class ViewSettings:
         self._on_preset_new()
 
     def _sync_category_combo(self):
-        from interfaces.helper import get_categories
+        from interfaces.helper.utils import get_categories
         cats = get_categories()
         try:
             self._filter_cat_combo.configure(values=["All"] + cats)
@@ -483,7 +483,7 @@ class ViewSettings:
         return frame
 
     def _refresh_email_panel(self):
-        from adapters.crypto import get_email_setting
+        from adapters.encryption.crypto import get_email_setting
         self._email_enabled_var.set(get_email_setting("email_enabled", "0") == "1")
         self._email_automated_only_var.set(get_email_setting("email_automated_only", "0") == "1")
         self._email_host_entry.delete(0, tk.END)
@@ -499,7 +499,7 @@ class ViewSettings:
         self._email_ssl_var.set(get_email_setting("email_use_ssl", "0") == "1")
 
     def _on_email_save(self):
-        from adapters.crypto import set_email_setting
+        from adapters.encryption.crypto import set_email_setting
         set_email_setting("email_enabled",        "1" if self._email_enabled_var.get() else "0")
         set_email_setting("email_automated_only", "1" if self._email_automated_only_var.get() else "0")
         set_email_setting("email_smtp_host",      self._email_host_entry.get().strip())
@@ -512,7 +512,7 @@ class ViewSettings:
 
     def _on_email_test(self):
         self._on_email_save()
-        from adapters.email_notifier import test_connection
+        from adapters.notification.email_notifier import test_connection
         ok, msg = test_connection()
         color = ACCENT if ok else RED
         self._email_status_lbl.config(text=msg, fg=color)
@@ -522,7 +522,7 @@ class ViewSettings:
     # ------------------------------------------------------------------
 
     def _build_release_panel(self, parent: tk.Frame) -> tk.Frame:
-        from interfaces.style import MONO
+        from interfaces.style.style import MONO
         frame = tk.Frame(parent, bg=BG)
         inner = tk.Frame(frame, bg=BG)
         inner.pack(fill=tk.BOTH, expand=True, padx=24, pady=24)

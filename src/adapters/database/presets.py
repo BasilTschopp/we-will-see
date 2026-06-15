@@ -1,5 +1,5 @@
 from adapters.database.connection import get_connection
-from adapters.crypto import encrypt, decrypt
+from adapters.encryption.crypto import encrypt, decrypt
 
 
 def list_presets() -> list[str]:

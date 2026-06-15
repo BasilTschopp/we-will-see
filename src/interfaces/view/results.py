@@ -1,14 +1,14 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 
-from models.models import NavigationResult
-from interfaces.style import BG, FG, RED, FONT
+from core.core import NavigationResult
+from interfaces.style.style import BG, FG, RED, FONT
 
 
 class ViewResults:
 
     def build_sub(self, parent: tk.Frame):
-        from interfaces.style import SUB_BG, SUB_SEL_BG, SUB_SEL_FG
+        from interfaces.style.style import SUB_BG, SUB_SEL_BG, SUB_SEL_FG
         self.sub_results = tk.Frame(parent, bg=SUB_BG)
 
         # Release filter

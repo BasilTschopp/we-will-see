@@ -1,4 +1,4 @@
-﻿import os
+import os
 import sys
 import tkinter as tk
 from tkinter import ttk
@@ -7,7 +7,7 @@ import yaml
 
 def _style_path() -> str:
     if getattr(sys, "frozen", False):
-        return os.path.join(sys._MEIPASS, "interfaces", "style.yaml")
+        return os.path.join(sys._MEIPASS, "interfaces", "style", "style.yaml")
     return os.path.join(os.path.dirname(os.path.abspath(__file__)), "style.yaml")
 
 
@@ -82,5 +82,3 @@ def color_titlebar(root: tk.Tk):
             hwnd, 36, ctypes.byref(ctypes.c_int(text_color)), 4)
     except Exception:
         pass
-
-

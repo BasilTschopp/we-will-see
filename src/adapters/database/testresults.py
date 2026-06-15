@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from models.models import NavigationResult, log
+from core.core import NavigationResult, log
 
 
 def save_results(run_name: str, results: list[NavigationResult],

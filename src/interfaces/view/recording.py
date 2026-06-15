@@ -1,14 +1,15 @@
-﻿import tkinter as tk
+import tkinter as tk
 from tkinter import ttk
 
-from interfaces.style import BG, FG, FG_SEC, ACCENT, RED, BORDER, FONT
-from interfaces.helper import divider, get_categories
+from interfaces.style.style import BG, FG, FG_SEC, ACCENT, RED, BORDER, FONT
+from interfaces.helper.widgets import divider
+from interfaces.helper.utils import get_categories
 
 
 class ViewRecording:
 
     def build_sub(self, parent: tk.Frame):
-        from interfaces.style import SUB_BG, SUB_SEL_BG, SUB_SEL_FG
+        from interfaces.style.style import SUB_BG, SUB_SEL_BG, SUB_SEL_FG
         self.sub_record = tk.Frame(parent, bg=SUB_BG)
 
         tk.Label(self.sub_record, text="URL Presets", bg=SUB_BG, fg=FG_SEC,
@@ -231,5 +232,3 @@ class ViewRecording:
                 self.tc_listbox.see(i)
                 self._load_into_editor(name)
                 break
-
-

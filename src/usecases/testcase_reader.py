@@ -1,7 +1,7 @@
 ﻿import logging
 import yaml
 
-from models.models import NavigationItem
+from core.core import NavigationItem
 
 log = logging.getLogger("app")
 

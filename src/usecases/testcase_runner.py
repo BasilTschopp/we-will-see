@@ -125,7 +125,7 @@ from selenium.common.exceptions import (
     WebDriverException,
 )
 
-from models.models import (
+from core.core import (
     log, NavigationItem, NavigationResult, dom_fingerprint,
     dismiss_cookie_banner,
     NAV_CLICK_SELECTORS, MODAL_TRIGGER_SELECTORS, MODAL_CONTAINER_SELECTORS,
@@ -202,7 +202,7 @@ def _run_sequential(app, tc_names: list[str], headless: bool):
         err = sum(1 for r in app.results if r.status == "ERROR")
         log.info(f"Done — {ok} OK, {err} errors")
         if err:
-            from adapters.email_notifier import send_failure_alert
+            from adapters.notification.email_notifier import send_failure_alert
             try:
                 send_failure_alert(result_name, app.results)
             except Exception as mail_exc:
@@ -288,7 +288,7 @@ def _run_single_tc(app, name: str, headless: bool):
         log.info(f"Done [{name}] — {ok} OK, {err} errors")
 
         if err:
-            from adapters.email_notifier import send_failure_alert
+            from adapters.notification.email_notifier import send_failure_alert
             try:
                 send_failure_alert(result_name, results)
             except Exception as mail_exc:
@@ -365,7 +365,7 @@ def _run_single_tc_cli(name: str):
         print(f"[{name}] Done — {ok} OK, {err} errors  |  {result_name}")
 
         if err:
-            from adapters.email_notifier import send_failure_alert
+            from adapters.notification.email_notifier import send_failure_alert
             send_failure_alert(result_name, results, automated=True)
 
     except Exception as e:

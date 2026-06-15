@@ -1,14 +1,15 @@
-﻿import tkinter as tk
+import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog
 
-from interfaces.style import BG, BG2, FG, FG_SEC, ACCENT, RED, BORDER, FONT, MONO
-from interfaces.helper import add_tooltip, get_categories
+from interfaces.style.style import BG, BG2, FG, FG_SEC, ACCENT, RED, BORDER, FONT, MONO
+from interfaces.helper.widgets import add_tooltip
+from interfaces.helper.utils import get_categories
 
 
 class ViewTesting:
 
     def build_sub(self, parent: tk.Frame):
-        from interfaces.style import SUB_BG, SUB_SEL_BG, SUB_SEL_FG
+        from interfaces.style.style import SUB_BG, SUB_SEL_BG, SUB_SEL_FG
         self.sub_testing = tk.Frame(parent, bg=SUB_BG)
 
         self._filter_cat_var = tk.StringVar(value="All")
@@ -120,6 +121,12 @@ class ViewTesting:
         self.save_btn.pack(side=tk.RIGHT, pady=2)
         self.save_btn.bind("<Button-1>", lambda _: self._on_save())
         add_tooltip(self.save_btn, "Save")
+
+        self.export_btn = tk.Label(footer, text="⇩", bg=BG, fg=FG,
+                                   font=(FONT, 13), cursor="hand2")
+        self.export_btn.pack(side=tk.RIGHT, padx=(0, 4), pady=2)
+        self.export_btn.bind("<Button-1>", lambda _: self._on_export())
+        add_tooltip(self.export_btn, "Export YAML")
 
         self.comment_btn = tk.Label(footer, text="💬", bg=BG, fg=FG,
                                     font=(FONT, 13), cursor="hand2")
@@ -357,6 +364,21 @@ class ViewTesting:
         popup.lift()
         popup.focus_force()
 
+    def _on_export(self):
+        if not self._current_tc_name:
+            return
+        from tkinter import filedialog
+        content = self.editor.get("1.0", tk.END).rstrip()
+        path = filedialog.asksaveasfilename(
+            defaultextension=".yaml",
+            filetypes=[("YAML files", "*.yaml"), ("All files", "*.*")],
+            initialfile=f"{self._current_tc_name}.yaml",
+            title="Export Testcase")
+        if not path:
+            return
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(content)
+
     def _on_save(self):
         if not self._current_tc_name:
             return
@@ -378,8 +400,6 @@ class ViewTesting:
                 upsert_testcase(self._current_tc_name, content, category)
         except Exception:
             pass
-
-
 
     # ------------------------------------------------------------------
     # Test run
@@ -420,5 +440,3 @@ class ViewTesting:
             self.stop_btn.configure(fg=BORDER)
             self.run_hl_btn.configure(fg=ACCENT)
             self.run_btn.configure(fg=ACCENT)
-
-

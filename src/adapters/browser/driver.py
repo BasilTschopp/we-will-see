@@ -11,7 +11,7 @@ from selenium.webdriver.firefox.service import Service as FirefoxService
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from selenium import webdriver
 
-from models.models import log
+from core.core import log
 
 
 def setup_logging():

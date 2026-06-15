@@ -1,8 +1,6 @@
-﻿import os
-import sys
 import tkinter as tk
 
-from interfaces.style import BG, FG_SEC, BORDER, FONT
+from interfaces.style.style import BG, FG_SEC, BORDER, FONT
 
 
 def add_tooltip(widget: tk.Widget, text: str):
@@ -37,17 +35,3 @@ def form_row(parent: tk.Widget, label_text: str,
 
 def divider(parent: tk.Widget, pady: int = 10):
     tk.Frame(parent, bg=BORDER, height=1).pack(fill=tk.X, pady=pady)
-
-
-def get_categories() -> list[str]:
-    from adapters.database.settings import get_categories as _db_cats
-    return _db_cats()
-
-
-def results_dir() -> str:
-    d = os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])),
-                     "files", "testresults")
-    os.makedirs(d, exist_ok=True)
-    return d
-
-

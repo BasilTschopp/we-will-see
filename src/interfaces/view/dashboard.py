@@ -1,8 +1,8 @@
 import tkinter as tk
 from tkinter import ttk
 
-from interfaces.style import BG, BG2, FG, FG_SEC, ACCENT, RED, BORDER, FONT
-from interfaces.style import SUB_BG, SUB_SEL_BG, SUB_SEL_FG
+from interfaces.style.style import BG, BG2, FG, FG_SEC, ACCENT, RED, BORDER, FONT
+from interfaces.style.style import SUB_BG, SUB_SEL_BG, SUB_SEL_FG
 
 
 def _stat_card(parent: tk.Frame, title: str, value: str, color: str) -> tk.Frame:

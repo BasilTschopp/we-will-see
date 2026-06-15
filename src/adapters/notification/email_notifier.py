@@ -3,11 +3,11 @@ import ssl
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
-from models.models import log
+from core.core import log
 
 
 def _cfg():
-    from adapters.crypto import get_email_setting
+    from adapters.encryption.crypto import get_email_setting
     return {
         "enabled":        get_email_setting("email_enabled",        "0") == "1",
         "automated_only": get_email_setting("email_automated_only", "0") == "1",

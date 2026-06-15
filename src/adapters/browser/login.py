@@ -5,7 +5,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
-from models.models import log
+from core.core import log
 
 
 def login(driver, url: str, username: str = "", password: str = "") -> str:

@@ -13,7 +13,7 @@ NavigationItem / YAML testcase format.
 import time
 import yaml
 from typing import Optional
-from models.models import log
+from core.core import log
 
 
 _RECORDER_JS = r"""

@@ -5,7 +5,7 @@ def _key_file() -> Path:
     if getattr(sys, "frozen", False):
         base = Path(sys.executable).parent
     else:
-        base = Path(__file__).parent.parent.parent
+        base = Path(__file__).parent.parent.parent.parent
     p = base / "data" / "secret.key"
     p.parent.mkdir(parents=True, exist_ok=True)
     return p
@@ -33,7 +33,7 @@ def decrypt(value: str) -> str:
         from cryptography.fernet import Fernet
         return Fernet(_key()).decrypt(value.encode()).decode()
     except Exception:
-        from models.models import log
+        from core.core import log
         log.warning("decrypt: failed to decrypt value — returning empty string "
                     "(key may have changed or data is corrupted)")
         return ""

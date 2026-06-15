@@ -1,14 +1,14 @@
 import tkinter as tk
 
-from models.models import NavigationResult
+from core.core import NavigationResult
 from adapters.browser.driver import setup_logging
-from interfaces.style import BG, NAV_BG, NAV_FG, NAV_ACTIVE_BG, NAV_ACTIVE_FG, BORDER, SUB_BG, FONT
-from interfaces.style import apply_theme, color_titlebar
-from interfaces.view_testing   import ViewTesting
-from interfaces.view_recording import ViewRecording
-from interfaces.view_results   import ViewResults
-from interfaces.view_settings  import ViewSettings
-from interfaces.view_dashboard import ViewDashboard
+from interfaces.style.style import BG, NAV_BG, NAV_FG, NAV_ACTIVE_BG, NAV_ACTIVE_FG, BORDER, SUB_BG, FONT
+from interfaces.style.style import apply_theme, color_titlebar
+from interfaces.view.testing   import ViewTesting
+from interfaces.view.recording import ViewRecording
+from interfaces.view.results   import ViewResults
+from interfaces.view.settings  import ViewSettings
+from interfaces.view.dashboard import ViewDashboard
 
 
 class App(ViewDashboard, ViewTesting, ViewRecording, ViewResults, ViewSettings):
