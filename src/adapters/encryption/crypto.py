@@ -6,7 +6,7 @@ def _key_file() -> Path:
         base = Path(sys.executable).parent
     else:
         base = Path(__file__).parent.parent.parent.parent
-    p = base / "data" / "secret.key"
+    p = base / "data" / "keys" / "secret.key"
     p.parent.mkdir(parents=True, exist_ok=True)
     return p
 
