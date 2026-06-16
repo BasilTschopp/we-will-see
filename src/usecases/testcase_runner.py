@@ -459,6 +459,7 @@ class NavigationTester:
         self.driver  = driver
         self.items   = items
         self.results: list[NavigationResult] = []
+        self._context: dict = {}
 
     def _safe_click(self, element) -> bool:
         try:
@@ -810,7 +811,9 @@ class NavigationTester:
             is_file_input = self.driver.execute_script(
                 "return arguments[0].type === 'file';", el)
             if el.is_displayed() or is_file_input:
-                resolved = resolve_input_value(item.input_value)
+                resolved = resolve_input_value(item.input_value, self._context)
+                if item.store_as and resolved:
+                    self._context[item.store_as] = resolved
                 if resolved:
                     if not is_file_input:
                         self.driver.execute_script(
@@ -959,7 +962,7 @@ class NavigationTester:
             if item.source_url:
                 self.driver.get(item.source_url)
                 self._wait_for_dom_stable()
-            search = resolve_input_value(item.assert_text or item.input_value)
+            search = resolve_input_value(item.assert_text or item.input_value, self._context)
             if not search:
                 self._record(item, status="ERROR",
                              error="No assert_text defined")

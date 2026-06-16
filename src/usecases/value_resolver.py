@@ -5,7 +5,7 @@ from datetime import date, timedelta
 _EXPR = re.compile(r"\{\{(.+?)\}\}")
 
 
-def resolve_input_value(value: str) -> str:
+def resolve_input_value(value: str, context: dict | None = None) -> str:
     def _eval(m):
         expr = m.group(1).strip()
 
@@ -19,6 +19,9 @@ def resolve_input_value(value: str) -> str:
             delta = int(dm.group(1)) if dm.group(1) else 0
             fmt = dm.group(2).strip() if dm.group(2) else "%d.%m.%Y"
             return (date.today() + timedelta(days=delta)).strftime(fmt)
+
+        if context and expr in context:
+            return str(context[expr])
 
         return m.group(0)
 

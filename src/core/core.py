@@ -19,6 +19,7 @@ class NavigationItem:
     input_value: str = ""
     submit_key: str = ""
     assert_text: str = ""
+    store_as: str = ""
 
 
 @dataclass
