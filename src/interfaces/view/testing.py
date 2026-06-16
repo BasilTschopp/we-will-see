@@ -410,7 +410,7 @@ class ViewTesting:
         from usecases.testcase_runner import run_test
         if self.running:
             return
-        self._on_editor_focusout()
+        self._on_save()
         sel = self.tc_listbox.curselection()
         if not sel:
             messagebox.showinfo("", "Please select testcases.\n"
