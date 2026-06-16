@@ -392,7 +392,7 @@ def run_record(app, url: str, tc_name: str,
         recorder.start()
         app.recorder = recorder
 
-        log.info("Recordingâ€¦ close browser or press Stop to finish.")
+        log.info("Recording… close browser or press Stop to finish.")
 
         def _tick():
             if not app.running:
@@ -400,7 +400,7 @@ def run_record(app, url: str, tc_name: str,
             n = recorder.event_count()
             try:
                 app.root.after(0, app._update_record_status,
-                               f"Recordingâ€¦ {n} events captured")
+                               f"Recording… {n} events captured")
             except Exception:
                 pass
             import threading
@@ -762,9 +762,9 @@ class NavigationTester:
                 self._wait_for_dom_stable(pre_url=pre_url)
                 post_url = self.driver.current_url
                 if post_url != pre_url:
-                    title = f"Row â†' {post_url}"
+                    title = f"Row → {post_url}"
                 elif dom_fingerprint(self.driver) != pre_fp:
-                    title = "Row â†' DOM change"
+                    title = "Row → DOM change"
                 else:
                     title = "Row clicked, no reaction"
                 self._record(item, status="OK", title=title, load_ms=load_ms)
@@ -931,9 +931,9 @@ class NavigationTester:
                 self._wait_for_dom_stable(pre_url=pre_url, pre_fp=pre_fp)
                 post_url = self.driver.current_url
                 if post_url != pre_url:
-                    title = f"Click â†' {post_url}"
+                    title = f"Click → {post_url}"
                 elif dom_fingerprint(self.driver) != pre_fp:
-                    title = "Click â†' DOM change"
+                    title = "Click → DOM change"
                 else:
                     title = "Click executed"
                 error = self._check_error_page()

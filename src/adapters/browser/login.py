@@ -106,7 +106,7 @@ def login(driver, url: str, username: str = "", password: str = "") -> str:
             log.warning("Login redirect timeout after 15s")
 
         crawl_url = driver.current_url
-        log.info(f"Login done â†’ {crawl_url}")
+        log.info(f"Login done → {crawl_url}")
         return crawl_url
 
     except Exception as e:

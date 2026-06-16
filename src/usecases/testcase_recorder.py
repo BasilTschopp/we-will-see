@@ -273,7 +273,7 @@ class SessionRecorder:
         if self._poll_thread:
             self._poll_thread.join(timeout=3)
         self._poll_once()
-        log.info(f"Recorder stopped â€“ {len(self._events)} events captured")
+        log.info(f"Recorder stopped — {len(self._events)} events captured")
 
     def _inject(self):
         try:
