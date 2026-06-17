@@ -4,8 +4,8 @@
 #claude code configuration
 .claude
 
-#database in project folder
-*.db
+#data folder
+data/
 
 # python compiled files
 __pycache__/
@@ -13,6 +13,3 @@ __pycache__/
 # pyinstaller output
 src/build/
 src/dist/
-
-# Encryption keys
-*.key
