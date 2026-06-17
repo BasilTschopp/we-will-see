@@ -104,8 +104,38 @@ class ViewTesting:
                                   command=self.editor.yview)
         editor_sb.pack(side=tk.RIGHT, fill=tk.Y)
         self.editor.configure(yscrollcommand=editor_sb.set)
+        self.editor.tag_configure('search_match',   background='#4a4a10')
+        self.editor.tag_configure('search_current', background=ACCENT, foreground='#ffffff')
+        self.editor.bind('<Control-f>', lambda e: self._search_show() or 'break')
+
+        self._search_frame = tk.Frame(editor_frame, bg=BG2)
+        self._search_var   = tk.StringVar()
+        self._search_var.trace_add('write', lambda *_: self._search_update())
+        self._search_entry = tk.Entry(
+            self._search_frame, textvariable=self._search_var,
+            bg=BG, fg=FG, insertbackground=FG, relief='flat',
+            borderwidth=0, highlightthickness=1,
+            highlightcolor=ACCENT, highlightbackground=BORDER,
+            font=(MONO, 10))
+        self._search_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(8, 4), pady=4)
+        self._search_entry.bind('<Return>',       lambda _: self._search_next())
+        self._search_entry.bind('<Shift-Return>', lambda _: self._search_prev())
+        self._search_entry.bind('<Escape>',       lambda _: self._search_hide())
+        self._search_count_label = tk.Label(
+            self._search_frame, text='', bg=BG2, fg=FG_SEC, font=(FONT, 9), width=8)
+        self._search_count_label.pack(side=tk.LEFT)
+        for sym, cmd in [('↑', self._search_prev), ('↓', self._search_next)]:
+            lbl = tk.Label(self._search_frame, text=sym, bg=BG2, fg=FG,
+                           font=(FONT, 11), cursor='hand2')
+            lbl.pack(side=tk.LEFT, padx=2)
+            lbl.bind('<Button-1>', lambda _, c=cmd: c())
+        close_lbl = tk.Label(self._search_frame, text='✕', bg=BG2, fg=FG_SEC,
+                             font=(FONT, 10), cursor='hand2', padx=8)
+        close_lbl.pack(side=tk.RIGHT)
+        close_lbl.bind('<Button-1>', lambda _: self._search_hide())
 
         footer = tk.Frame(editor_frame, bg=BG)
+        self._footer_frame = footer
         footer.pack(fill=tk.X, pady=(4, 0))
 
         self._automated_var = tk.BooleanVar()
@@ -134,7 +164,78 @@ class ViewTesting:
         self.comment_btn.bind("<Button-1>", lambda _: self._on_comment())
         add_tooltip(self.comment_btn, "Comment")
 
-        self._current_comment = ""
+        self._current_comment  = ""
+        self._search_matches: list = []
+        self._search_idx:     int  = -1
+
+    # ------------------------------------------------------------------
+    # Search
+    # ------------------------------------------------------------------
+
+    def _search_show(self):
+        if not self._search_frame.winfo_manager():
+            self._search_frame.pack(fill=tk.X, before=self._footer_frame)
+        self._search_entry.focus_set()
+        self._search_entry.select_range(0, tk.END)
+
+    def _search_hide(self):
+        self._search_frame.pack_forget()
+        self.editor.tag_remove('search_match',   '1.0', tk.END)
+        self.editor.tag_remove('search_current', '1.0', tk.END)
+        self._search_matches = []
+        self._search_idx     = -1
+        self._search_count_label.configure(text='')
+        self.editor.focus_set()
+
+    def _search_update(self):
+        self.editor.tag_remove('search_match',   '1.0', tk.END)
+        self.editor.tag_remove('search_current', '1.0', tk.END)
+        term = self._search_var.get()
+        if not term:
+            self._search_matches = []
+            self._search_idx     = -1
+            self._search_count_label.configure(text='')
+            return
+        matches = []
+        start   = '1.0'
+        length  = len(term)
+        while True:
+            pos = self.editor.search(term, start, stopindex=tk.END, nocase=True)
+            if not pos:
+                break
+            end = f'{pos}+{length}c'
+            matches.append((pos, end))
+            self.editor.tag_add('search_match', pos, end)
+            start = end
+        self._search_matches = matches
+        if not matches:
+            self._search_count_label.configure(text='no match')
+            self._search_idx = -1
+        else:
+            self._search_idx = 0
+            self._search_highlight_current()
+
+    def _search_highlight_current(self):
+        self.editor.tag_remove('search_current', '1.0', tk.END)
+        if not self._search_matches or self._search_idx < 0:
+            return
+        pos, end = self._search_matches[self._search_idx]
+        self.editor.tag_add('search_current', pos, end)
+        self.editor.see(pos)
+        self._search_count_label.configure(
+            text=f'{self._search_idx + 1}/{len(self._search_matches)}')
+
+    def _search_next(self):
+        if not self._search_matches:
+            return
+        self._search_idx = (self._search_idx + 1) % len(self._search_matches)
+        self._search_highlight_current()
+
+    def _search_prev(self):
+        if not self._search_matches:
+            return
+        self._search_idx = (self._search_idx - 1) % len(self._search_matches)
+        self._search_highlight_current()
 
     # ------------------------------------------------------------------
     # Testcase list

@@ -76,6 +76,15 @@ def list_releases() -> list[str]:
     return [r["release"] for r in rows]
 
 
+def fetch_release(run_name: str) -> str:
+    from adapters.database.connection import get_connection
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT release FROM testresults WHERE run_name = ? LIMIT 1", (run_name,)
+    ).fetchone()
+    return (row["release"] or "") if row else ""
+
+
 def delete_run(run_name: str) -> None:
     from adapters.database.connection import get_connection
     conn = get_connection()
