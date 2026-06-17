@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<order>
+  <header>
+    <id>INVALID-ID-999</id>
+    <date>99-99-9999</date>
+    <type>UNKNOWN_TYPE</type>
+  </header>
+  <positions>
+    <position>
+      <nr>1</nr>
+      <description>Position</description>
+      <price>-9999.99</price>
+      <quantity>0</quantity>
+    </position>
+  </positions>
+</order>

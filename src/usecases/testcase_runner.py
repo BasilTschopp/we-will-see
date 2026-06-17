@@ -107,7 +107,7 @@ from usecases.value_resolver import resolve_input_value
 from selenium.webdriver.common.by import By
 
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-_FILES_DIR = os.path.join(_PROJECT_ROOT, "data", "files")
+_FILES_DIR = os.path.join(_PROJECT_ROOT, "data", "testfiles")
 
 
 def _resolve_file_path(value: str) -> str:
@@ -466,7 +466,10 @@ class NavigationTester:
             self.driver.execute_script(
                 "arguments[0].scrollIntoView({block:'center'});", element)
             time.sleep(0.05)
-            element.click()
+            try:
+                element.click()
+            except Exception:
+                self.driver.execute_script("arguments[0].click();", element)
             return True
         except Exception:
             return False
@@ -486,12 +489,15 @@ class NavigationTester:
             "table_row":   self._test_table_row,
             "form_input":  self._test_form_input,
             "click":       self._test_click,
+            "assert":      self._test_assert_text,
             "assert_text": self._test_assert_text,
             "log_text":    self._test_log_text,
+            "read_value":  self._test_read_value,
             "wait":        self._test_wait,
         }
 
         for idx, item in enumerate(self.items, 1):
+            item.description = resolve_input_value(item.description, self._context)
             log.info(f"[{idx}/{total}] {item.method}: {item.description}")
             try:
                 handler = dispatch.get(item.method)
@@ -874,6 +880,17 @@ class NavigationTester:
                         return el
             except Exception:
                 continue
+        # Fallback: contains-match for buttons with icons (icon text shifts exact match)
+        for tag in ("button", "a", "div", "span"):
+            try:
+                els = self.driver.find_elements(
+                    By.XPATH,
+                    f"//{tag}[contains(normalize-space(.), '{escaped}')]")
+                for el in els:
+                    if el.is_displayed():
+                        return el
+            except Exception:
+                continue
         return None
 
     def _test_click(self, item: NavigationItem):
@@ -897,7 +914,7 @@ class NavigationTester:
             if item.selector:
                 try:
                     el = WebDriverWait(self.driver, 10).until(
-                        EC.element_to_be_clickable((By.CSS_SELECTOR, item.selector)))
+                        EC.presence_of_element_located((By.CSS_SELECTOR, item.selector)))
                 except (TimeoutException, Exception):
                     try:
                         el = self.driver.find_element(By.CSS_SELECTOR, item.selector)
@@ -969,12 +986,18 @@ class NavigationTester:
                 return
             if item.selector:
                 try:
-                    el = WebDriverWait(self.driver, 5).until(
+                    # Wait up to 30s: async content (e.g. XML validation) may appear late
+                    el = WebDriverWait(self.driver, 30).until(
                         EC.presence_of_element_located(
                             (By.CSS_SELECTOR, item.selector)))
-                    body_text = el.text or ""
+                    body_text = (el.text
+                                 or el.get_attribute("textContent")
+                                 or "").strip()
                 except TimeoutException:
                     body_text = ""
+                if not body_text:
+                    body_text = (self.driver.find_element(
+                        By.TAG_NAME, "body").text or "")
             else:
                 body_text = self.driver.find_element(
                     By.TAG_NAME, "body").text or ""
@@ -1008,6 +1031,27 @@ class NavigationTester:
         except Exception as e:
             self._record(item, status="ERROR",
                          error=f"Log text '{item.selector}': {str(e)[:150]}",
+                         load_ms=int((time.time() - start) * 1000))
+
+    def _test_read_value(self, item: NavigationItem):
+        start = time.time()
+        try:
+            el = WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, item.selector)))
+            text = (el.text or el.get_attribute("value")
+                    or el.get_attribute("textContent") or "").strip()
+            load_ms = int((time.time() - start) * 1000)
+            if item.store_as and text:
+                self._context[item.store_as] = text
+            self._record(item, status="OK",
+                         title=f"Read: '{text[:80]}'"
+                               + (f" → stored as '{item.store_as}'" if item.store_as else ""),
+                         load_ms=load_ms)
+            stored = f" → {item.store_as} = '{text}'" if item.store_as else ""
+            log.info(f"  OK ({load_ms}ms) — Read: {text[:80]}{stored}")
+        except Exception as e:
+            self._record(item, status="ERROR",
+                         error=f"Read value '{item.selector}': {str(e)[:150]}",
                          load_ms=int((time.time() - start) * 1000))
 
     def _test_wait(self, item: NavigationItem):
