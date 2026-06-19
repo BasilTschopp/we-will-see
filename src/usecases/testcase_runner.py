@@ -461,6 +461,44 @@ class NavigationTester:
         self.results: list[NavigationResult] = []
         self._context: dict = {}
 
+    def _update_overlay(self, idx: int, total: int, item) -> None:
+        try:
+            label = item.description or item.element_text or item.url or ""
+            html = (
+                f"<div style='font-size:11px;opacity:0.7;margin-bottom:4px'>"
+                f"Schritt {idx}&thinsp;/&thinsp;{total}</div>"
+                f"<div style='font-size:10px;opacity:0.55;margin-bottom:2px'>{item.method}</div>"
+                f"<div style='font-size:12px'>{label[:80]}</div>"
+            )
+            self.driver.execute_script("""
+                var el = document.getElementById('__wws_overlay__');
+                if (!el) {
+                    el = document.createElement('div');
+                    el.id = '__wws_overlay__';
+                    el.style.cssText = [
+                        'position:fixed', 'top:12px', 'right:12px', 'z-index:2147483647',
+                        'background:rgba(20,20,20,0.82)', 'color:#fff',
+                        'padding:10px 14px', 'border-radius:8px',
+                        'font:13px/1.45 monospace', 'max-width:360px',
+                        'pointer-events:none', 'box-shadow:0 2px 10px rgba(0,0,0,0.4)',
+                        'backdrop-filter:blur(4px)'
+                    ].join(';');
+                    document.body.appendChild(el);
+                }
+                el.innerHTML = arguments[0];
+            """, html)
+        except Exception:
+            pass
+
+    def _remove_overlay(self) -> None:
+        try:
+            self.driver.execute_script("""
+                var el = document.getElementById('__wws_overlay__');
+                if (el) el.remove();
+            """)
+        except Exception:
+            pass
+
     def _safe_click(self, element) -> bool:
         try:
             self.driver.execute_script(
@@ -499,6 +537,7 @@ class NavigationTester:
         for idx, item in enumerate(self.items, 1):
             item.description = resolve_input_value(item.description, self._context)
             log.info(f"[{idx}/{total}] {item.method}: {item.description}")
+            self._update_overlay(idx, total, item)
             try:
                 handler = dispatch.get(item.method)
                 if handler:
@@ -507,7 +546,7 @@ class NavigationTester:
                 self._record(item, status="ERROR",
                              error=f"Unexpected error: {str(e)[:200]}")
 
-
+        self._remove_overlay()
         ok  = sum(1 for r in self.results if r.status == "OK")
         err = sum(1 for r in self.results if r.status == "ERROR")
         log.info(f"\n{'='*50}")
