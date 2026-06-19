@@ -41,6 +41,7 @@ def _parse_yaml_text(yaml_text: str,
             submit_key=tc.get("submit_key", ""),
             assert_text=tc.get("assert_text", ""),
             store_as=tc.get("store_as", ""),
+            optional=bool(tc.get("optional", False)),
         )
         for tc in data.get("testcases", [])
     ]

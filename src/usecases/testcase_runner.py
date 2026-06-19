@@ -527,9 +527,10 @@ class NavigationTester:
             "table_row":   self._test_table_row,
             "form_input":  self._test_form_input,
             "click":       self._test_click,
-            "assert":      self._test_assert_text,
-            "assert_text": self._test_assert_text,
-            "log_text":    self._test_log_text,
+            "assert":          self._test_assert_text,
+            "assert_text":     self._test_assert_text,
+            "assert_error":    self._test_assert_not_text,
+            "log_text":        self._test_log_text,
             "read_value":  self._test_read_value,
             "wait":        self._test_wait,
         }
@@ -853,9 +854,16 @@ class NavigationTester:
 
             load_ms = int((time.time() - start) * 1000)
             # Use JS for type detection – works even on hidden elements
-            is_file_input = self.driver.execute_script(
-                "return arguments[0].type === 'file';", el)
-            if el.is_displayed() or is_file_input:
+            try:
+                is_file_input = self.driver.execute_script(
+                    "return arguments[0].type === 'file';", el)
+            except Exception:
+                is_file_input = "file" in (item.selector or "").lower()
+            try:
+                displayed = el.is_displayed()
+            except Exception:
+                displayed = False
+            if displayed or is_file_input:
                 resolved = resolve_input_value(item.input_value, self._context)
                 if item.store_as and resolved:
                     self._context[item.store_as] = resolved
@@ -866,19 +874,24 @@ class NavigationTester:
                         el.clear()
                     if is_file_input:
                         resolved = _resolve_file_path(resolved)
-                        # Force visibility so Selenium can interact with the hidden input
+                        try:
+                            self.driver.execute_script(
+                                "arguments[0].style.cssText += "
+                                "'; display:block !important; opacity:1 !important; "
+                                "visibility:visible !important;';",
+                                el
+                            )
+                        except Exception:
+                            pass
+                    el.send_keys(resolved)
+                    try:
                         self.driver.execute_script(
-                            "arguments[0].style.cssText += "
-                            "'; display:block !important; opacity:1 !important; "
-                            "visibility:visible !important;';",
+                            "arguments[0].dispatchEvent(new Event('input', {bubbles:true}));"
+                            "arguments[0].dispatchEvent(new Event('change', {bubbles:true}));",
                             el
                         )
-                    el.send_keys(resolved)
-                    self.driver.execute_script(
-                        "arguments[0].dispatchEvent(new Event('input', {bubbles:true}));"
-                        "arguments[0].dispatchEvent(new Event('change', {bubbles:true}));",
-                        el
-                    )
+                    except Exception:
+                        pass
                 key_map = {
                     "enter": Keys.ENTER, "return": Keys.RETURN,
                     "tab": Keys.TAB, "escape": Keys.ESCAPE,
@@ -962,9 +975,15 @@ class NavigationTester:
             if el is None and item.element_text:
                 el = self._find_by_text(item.element_text)
             if el is None:
-                self._record(item, status="ERROR",
-                             error=f"Element '{item.selector or item.element_text}' not found",
-                             load_ms=int((time.time() - start) * 1000))
+                if item.optional:
+                    self._record(item, status="OK",
+                                 title="Skipped (element not found, optional)",
+                                 load_ms=int((time.time() - start) * 1000))
+                    log.info(f"  OK (optional, skipped) — {item.selector or item.element_text}")
+                else:
+                    self._record(item, status="ERROR",
+                                 error=f"Element '{item.selector or item.element_text}' not found",
+                                 load_ms=int((time.time() - start) * 1000))
                 return
 
             pre_url = self.driver.current_url
@@ -1054,6 +1073,47 @@ class NavigationTester:
         except Exception as e:
             self._record(item, status="ERROR",
                          error=f"Assert: {str(e)[:150]}",
+                         load_ms=int((time.time() - start) * 1000))
+
+    def _test_assert_not_text(self, item: NavigationItem):
+        start = time.time()
+        try:
+            if item.source_url:
+                self.driver.get(item.source_url)
+                self._wait_for_dom_stable()
+            search = resolve_input_value(item.assert_text or item.input_value, self._context)
+            if not search:
+                self._record(item, status="ERROR",
+                             error="No assert_text defined")
+                return
+            if item.selector:
+                try:
+                    el = WebDriverWait(self.driver, 5).until(
+                        EC.presence_of_element_located(
+                            (By.CSS_SELECTOR, item.selector)))
+                    body_text = (el.text
+                                 or el.get_attribute("textContent")
+                                 or "").strip()
+                except TimeoutException:
+                    body_text = ""
+            else:
+                body_text = self.driver.find_element(
+                    By.TAG_NAME, "body").text or ""
+
+            load_ms = int((time.time() - start) * 1000)
+            if search in body_text:
+                self._record(item, status="ERROR",
+                             error=f"Unerwarteter Text gefunden: '{search[:60]}'",
+                             load_ms=load_ms)
+                log.warning(f"  ERROR ({load_ms}ms) — Unerwarteter Text gefunden")
+            else:
+                self._record(item, status="OK",
+                             title=f"Text nicht vorhanden: '{search[:40]}'",
+                             load_ms=load_ms)
+                log.info(f"  OK ({load_ms}ms) — Text nicht vorhanden")
+        except Exception as e:
+            self._record(item, status="ERROR",
+                         error=f"Assert not text: {str(e)[:150]}",
                          load_ms=int((time.time() - start) * 1000))
 
     def _test_log_text(self, item: NavigationItem):

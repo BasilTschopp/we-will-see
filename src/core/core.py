@@ -20,6 +20,7 @@ class NavigationItem:
     submit_key: str = ""
     assert_text: str = ""
     store_as: str = ""
+    optional: bool = False
 
 
 @dataclass
