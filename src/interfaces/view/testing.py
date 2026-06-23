@@ -20,14 +20,12 @@ class ViewTesting:
         self._filter_cat_combo.bind("<<ComboboxSelected>>",
                                     lambda _: self._refresh_tc_list())
 
-        self.tc_listbox = tk.Listbox(
-            self.sub_testing, bg=SUB_BG, fg=FG,
-            selectbackground=SUB_SEL_BG, selectforeground=SUB_SEL_FG,
-            font=(FONT, 11), borderwidth=0, highlightthickness=0,
-            activestyle="none", relief="flat", exportselection=False,
-            selectmode="extended")
+        self.tc_listbox = ttk.Treeview(
+            self.sub_testing, style="SubList.Treeview",
+            columns=("name",), show="", selectmode="extended")
+        self.tc_listbox.column("name", anchor="w", stretch=True)
         self.tc_listbox.pack(fill=tk.BOTH, expand=True, padx=(10, 4), pady=4)
-        self.tc_listbox.bind("<<ListboxSelect>>", self._on_tc_select)
+        self.tc_listbox.bind("<<TreeviewSelect>>", self._on_tc_select)
         self.tc_listbox.bind("<Button-3>", self._on_tc_rightclick)
 
         bar = tk.Frame(self.sub_testing, bg=SUB_BG)
@@ -235,33 +233,33 @@ class ViewTesting:
     def _refresh_tc_list(self):
         from adapters.database.testcases import list_testcases
         filter_cat = self._filter_cat_var.get()
-        self.tc_listbox.delete(0, tk.END)
+        self.tc_listbox.delete(*self.tc_listbox.get_children())
         names = sorted(
             (name for name, cat in list_testcases()
              if filter_cat == "All" or cat == filter_cat),
             key=str.casefold)
         for name in names:
-            self.tc_listbox.insert(tk.END, name)
-        if self.tc_listbox.size() > 0:
-            self.tc_listbox.selection_set(0)
-            self.tc_listbox.activate(0)
+            self.tc_listbox.insert("", tk.END, iid=name, values=(name,))
+        children = self.tc_listbox.get_children()
+        if children:
+            self.tc_listbox.selection_set(children[0])
+            self.tc_listbox.focus(children[0])
             self._on_tc_select()
 
     def _on_tc_select(self, _=None):
-        sel = self.tc_listbox.curselection()
+        sel = self.tc_listbox.selection()
         if not sel:
             return
         self._on_editor_focusout()
-        name = self.tc_listbox.get(sel[0])
+        name = sel[0]
         self._load_into_editor(name)
 
     def _on_tc_rightclick(self, event):
-        idx = self.tc_listbox.nearest(event.y)
-        if idx >= 0 and idx not in self.tc_listbox.curselection():
-            self.tc_listbox.selection_clear(0, tk.END)
-            self.tc_listbox.selection_set(idx)
-            self.tc_listbox.activate(idx)
-        multi = len(self.tc_listbox.curselection()) > 1
+        iid = self.tc_listbox.identify_row(event.y)
+        if iid and iid not in self.tc_listbox.selection():
+            self.tc_listbox.selection_set(iid)
+            self.tc_listbox.focus(iid)
+        multi = len(self.tc_listbox.selection()) > 1
         self.tc_menu.entryconfigure("Rename",          state="disabled" if multi else "normal")
         self.tc_menu.entryconfigure("Change Category", state="disabled" if multi else "normal")
         try:
@@ -289,11 +287,11 @@ class ViewTesting:
         self._load_into_editor(name)
 
     def _on_rename(self):
-        sel = self.tc_listbox.curselection()
+        sel = self.tc_listbox.selection()
         if not sel:
             messagebox.showinfo("", "Please select a testcase.")
             return
-        old_name = self.tc_listbox.get(sel[0])
+        old_name = sel[0]
         new_name = simpledialog.askstring(
             "Rename", f"New name for '{old_name}':",
             initialvalue=old_name, parent=self.root)
@@ -311,11 +309,11 @@ class ViewTesting:
         self.editor_title.configure(text=new_name, fg=FG)
 
     def _on_change_category(self):
-        sel = self.tc_listbox.curselection()
+        sel = self.tc_listbox.selection()
         if not sel:
             messagebox.showinfo("", "Please select a testcase.")
             return
-        name = self.tc_listbox.get(sel[0])
+        name = sel[0]
         categories = get_categories()
         if not categories:
             messagebox.showinfo("", "No categories defined in APP_CATEGORIES.")
@@ -344,11 +342,11 @@ class ViewTesting:
         dialog.bind("<Return>", lambda _: _apply())
 
     def _on_delete(self):
-        sel = self.tc_listbox.curselection()
+        sel = self.tc_listbox.selection()
         if not sel:
             messagebox.showinfo("", "Please select a testcase.")
             return
-        names = [self.tc_listbox.get(i) for i in sel]
+        names = list(sel)
         msg = (f"Delete '{names[0]}'?" if len(names) == 1
                else f"Delete {len(names)} testcases?\n" + "\n".join(f"  • {n}" for n in names))
         if not messagebox.askyesno("Delete", msg):
@@ -555,12 +553,12 @@ class ViewTesting:
         if self.running:
             return
         self._on_save()
-        sel = self.tc_listbox.curselection()
+        sel = self.tc_listbox.selection()
         if not sel:
             messagebox.showinfo("", "Please select testcases.\n"
                                    "(Multi-select with Ctrl+Click)")
             return
-        names = [self.tc_listbox.get(i) for i in sel]
+        names = list(sel)
         self._set_running(True)
         threading.Thread(target=run_test,
                          args=(self, names, headless), daemon=True).start()

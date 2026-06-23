@@ -64,6 +64,13 @@ def apply_theme():
           foreground=[("selected", ACCENT)])
     s.configure("Treeview.Heading", background=BG, foreground=FG,
                 font=(FONT, 9), borderwidth=0, relief="flat")
+    s.configure("SubList.Treeview",
+                background=SUB_BG, fieldbackground=SUB_BG, foreground=FG,
+                rowheight=28, font=(FONT, 11),
+                borderwidth=0, relief="flat")
+    s.map("SubList.Treeview",
+          background=[("selected", SUB_SEL_BG)],
+          foreground=[("selected", SUB_SEL_FG)])
 
 
 def color_titlebar(root: tk.Tk):

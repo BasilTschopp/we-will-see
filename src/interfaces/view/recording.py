@@ -224,11 +224,8 @@ class ViewRecording:
         self.rec_stop_btn.configure(bg=BORDER, fg=FG_SEC)
         self._show_section("testing")
         self._refresh_tc_list()
-        for i in range(self.tc_listbox.size()):
-            if self.tc_listbox.get(i) == name:
-                self.tc_listbox.selection_clear(0, tk.END)
-                self.tc_listbox.selection_set(i)
-                self.tc_listbox.activate(i)
-                self.tc_listbox.see(i)
-                self._load_into_editor(name)
-                break
+        if name in self.tc_listbox.get_children():
+            self.tc_listbox.selection_set(name)
+            self.tc_listbox.focus(name)
+            self.tc_listbox.see(name)
+            self._load_into_editor(name)

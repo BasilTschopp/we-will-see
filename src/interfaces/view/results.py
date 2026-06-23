@@ -14,23 +14,32 @@ class ViewResults:
         self.sub_results = tk.Frame(parent, bg=SUB_BG)
 
         # Release filter
-        self._results_release_var = tk.StringVar(value="All")
+        self._results_release_var = tk.StringVar(value="All releases")
         self._results_release_combo = ttk.Combobox(
             self.sub_results, textvariable=self._results_release_var,
-            values=["All"], state="readonly")
+            values=["All releases"], state="readonly")
         self._results_release_combo.pack(fill=tk.X, padx=(10, 4), pady=(6, 2))
         self._results_release_combo.bind(
             "<<ComboboxSelected>>", lambda _: self._refresh_results_list())
 
-        self.results_listbox = tk.Listbox(
-            self.sub_results, bg=SUB_BG, fg=FG,
-            selectbackground=SUB_SEL_BG, selectforeground=SUB_SEL_FG,
-            font=(FONT, 11), borderwidth=0, highlightthickness=0,
-            activestyle="none", relief="flat", exportselection=False,
-            selectmode=tk.EXTENDED)
+        # Status filter
+        self._results_status_var = tk.StringVar(value="All results")
+        self._results_status_combo = ttk.Combobox(
+            self.sub_results, textvariable=self._results_status_var,
+            values=["All results", "Latest per testcase",
+                    "Errors only", "No errors only"],
+            state="readonly")
+        self._results_status_combo.pack(fill=tk.X, padx=(10, 4), pady=(0, 4))
+        self._results_status_combo.bind(
+            "<<ComboboxSelected>>", lambda _: self._refresh_results_list())
+
+        self.results_listbox = ttk.Treeview(
+            self.sub_results, style="SubList.Treeview",
+            columns=("name",), show="", selectmode="extended")
+        self.results_listbox.column("name", anchor="w", stretch=True)
         self.results_listbox.pack(fill=tk.BOTH, expand=True,
                                   padx=(10, 4), pady=4)
-        self.results_listbox.bind("<<ListboxSelect>>", self._on_result_select)
+        self.results_listbox.bind("<<TreeviewSelect>>", self._on_result_select)
         self.results_listbox.bind("<Delete>", lambda _: self._on_delete_result())
         self.results_listbox.bind("<Button-3>", self._on_results_rightclick)
 
@@ -112,56 +121,74 @@ class ViewResults:
     # ------------------------------------------------------------------
 
     def _refresh_results_list(self):
-        from adapters.database.testresults import list_runs, list_releases
+        from adapters.database.testresults import list_runs_with_status, list_releases
 
         releases = list_releases()
-        self._results_release_combo.configure(values=["All"] + releases)
+        self._results_release_combo.configure(values=["All releases"] + releases)
 
         sel_release = self._results_release_var.get()
-        if sel_release not in ["All"] + releases:
-            sel_release = "All"
-            self._results_release_var.set("All")
+        if sel_release not in ["All releases"] + releases:
+            sel_release = "All releases"
+            self._results_release_var.set("All releases")
 
-        filtered = list_runs(release="" if sel_release == "All" else sel_release)
+        runs = list_runs_with_status(
+            release="" if sel_release == "All releases" else sel_release)
 
-        self.results_listbox.delete(0, tk.END)
-        for name in filtered:
-            self.results_listbox.insert(tk.END, name)
-        if self.results_listbox.size() > 0:
-            self.results_listbox.selection_set(0)
-            self.results_listbox.activate(0)
+        status_filter = self._results_status_var.get()
+
+        if status_filter == "Errors only":
+            runs = [(n, h) for n, h in runs if h]
+        elif status_filter == "No errors only":
+            runs = [(n, h) for n, h in runs if not h]
+        elif status_filter == "Latest per testcase":
+            seen: set[str] = set()
+            latest = []
+            for n, h in runs:
+                parts = n.split(" - ", 2)
+                tc_key = parts[2] if len(parts) >= 3 else n
+                if tc_key not in seen:
+                    seen.add(tc_key)
+                    latest.append((n, h))
+            runs = latest
+
+        self.results_listbox.delete(*self.results_listbox.get_children())
+        for name, _ in runs:
+            self.results_listbox.insert("", tk.END, iid=name, values=(name,))
+        children = self.results_listbox.get_children()
+        if children:
+            self.results_listbox.selection_set(children[0])
+            self.results_listbox.focus(children[0])
             self._on_result_select()
 
     def _on_results_rightclick(self, event):
-        idx = self.results_listbox.nearest(event.y)
-        if idx < 0:
+        iid = self.results_listbox.identify_row(event.y)
+        if not iid:
             return
-        if idx not in self.results_listbox.curselection():
-            self.results_listbox.selection_clear(0, tk.END)
-            self.results_listbox.selection_set(idx)
-            self.results_listbox.activate(idx)
+        if iid not in self.results_listbox.selection():
+            self.results_listbox.selection_set(iid)
+            self.results_listbox.focus(iid)
             self._on_result_select()
         self._results_context_menu.tk_popup(event.x_root, event.y_root)
 
     def _on_result_select(self, _=None):
-        sel = self.results_listbox.curselection()
+        sel = self.results_listbox.selection()
         if not sel:
             return
         if len(sel) > 1:
             self.result_title.configure(text=f"{len(sel)} results selected", fg=FG)
             self.csv_tree.delete(*self.csv_tree.get_children())
             return
-        name = self.results_listbox.get(sel[0])
+        name = sel[0]
         self.result_title.configure(text=name, fg=FG)
         from adapters.database.testresults import fetch_results
         self._load_results_into_tree(fetch_results(name))
 
     def _on_generate_report(self):
-        sel = self.results_listbox.curselection()
+        sel = self.results_listbox.selection()
         if not sel:
             messagebox.showinfo("", "Please select one or more results.")
             return
-        names = [self.results_listbox.get(i) for i in sel]
+        names = list(sel)
         try:
             from usecases.report_generator import generate_report
             path = generate_report(names)
@@ -231,11 +258,11 @@ class ViewResults:
         popup.lift()
 
     def _on_delete_result(self):
-        sel = self.results_listbox.curselection()
+        sel = self.results_listbox.selection()
         if not sel:
             messagebox.showinfo("", "Please select a result.")
             return
-        names = [self.results_listbox.get(i) for i in sel]
+        names = list(sel)
         if len(names) == 1:
             prompt = f"Delete '{names[0]}'?"
         else:
@@ -254,10 +281,10 @@ class ViewResults:
     # ------------------------------------------------------------------
 
     def _on_export_result(self):
-        sel = self.results_listbox.curselection()
+        sel = self.results_listbox.selection()
         if not sel or len(sel) > 1:
             return
-        name = self.results_listbox.get(sel[0])
+        name = sel[0]
         from tkinter import filedialog
         import yaml
         from dataclasses import asdict

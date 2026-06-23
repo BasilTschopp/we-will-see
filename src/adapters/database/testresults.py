@@ -67,6 +67,30 @@ def list_runs(release: str = "") -> list[str]:
     return [r["run_name"] for r in rows]
 
 
+def list_runs_with_status(release: str = "") -> list[tuple[str, bool]]:
+    """Returns list of (run_name, has_errors) ordered by run_name DESC."""
+    from adapters.database.connection import get_connection
+    conn = get_connection()
+    if release:
+        rows = conn.execute("""
+            SELECT run_name,
+                   MAX(CASE WHEN status = 'ERROR' THEN 1 ELSE 0 END) AS has_errors
+            FROM testresults
+            WHERE release = ?
+            GROUP BY run_name
+            ORDER BY run_name DESC
+        """, (release,)).fetchall()
+    else:
+        rows = conn.execute("""
+            SELECT run_name,
+                   MAX(CASE WHEN status = 'ERROR' THEN 1 ELSE 0 END) AS has_errors
+            FROM testresults
+            GROUP BY run_name
+            ORDER BY run_name DESC
+        """).fetchall()
+    return [(r["run_name"], bool(r["has_errors"])) for r in rows]
+
+
 def list_releases() -> list[str]:
     from adapters.database.connection import get_connection
     conn = get_connection()
