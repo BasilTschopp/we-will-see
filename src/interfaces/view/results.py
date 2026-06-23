@@ -1,8 +1,9 @@
+import os
 import tkinter as tk
 from tkinter import ttk, messagebox
 
 from core.core import NavigationResult
-from interfaces.style.style import BG, FG, RED, FONT
+from interfaces.style.style import BG, BG2, FG, RED, FONT
 from interfaces.helper.widgets import add_tooltip
 
 
@@ -73,27 +74,35 @@ class ViewResults:
 
         self.csv_tree = ttk.Treeview(
             tree_frame,
-            columns=("time", "status", "ms", "description", "error"),
+            columns=("time", "status", "ms", "description", "img", "error"),
             show="headings", selectmode="browse")
         self.csv_tree.heading("time",        text="Time")
         self.csv_tree.heading("status",      text="Status")
         self.csv_tree.heading("ms",          text="ms")
         self.csv_tree.heading("description", text="Description")
+        self.csv_tree.heading("img",         text="")
         self.csv_tree.heading("error",       text="Error")
         self.csv_tree.column("time",        width=80,  minwidth=60,  stretch=False, anchor="w")
         self.csv_tree.column("status",      width=70,  minwidth=60,  stretch=False, anchor="w")
         self.csv_tree.column("ms",          width=55,  minwidth=40,  stretch=False, anchor="e")
         self.csv_tree.column("description", width=300, minwidth=150, anchor="w")
+        self.csv_tree.column("img",         width=24,  minwidth=24,  stretch=False, anchor="center")
         self.csv_tree.column("error",       width=350, minwidth=100, anchor="w")
         self.csv_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        csv_sb = ttk.Scrollbar(tree_frame, orient="vertical",
-                               command=self.csv_tree.yview)
-        csv_sb.pack(side=tk.RIGHT, fill=tk.Y)
-        self.csv_tree.configure(yscrollcommand=csv_sb.set)
+        self._csv_sb = ttk.Scrollbar(tree_frame, orient="vertical",
+                                     command=self.csv_tree.yview)
+        self._csv_sb.pack(side=tk.RIGHT, fill=tk.Y)
+        self.csv_tree.configure(yscrollcommand=self._on_tree_scroll)
         self.csv_tree.tag_configure("err",    foreground=RED)
         self.csv_tree.tag_configure("ok",     foreground=FG)
         self.csv_tree.tag_configure("stripe", background=BG)
+
+        self._screenshot_icon  = self._make_screenshot_icon()
+        self._screenshot_paths: dict[str, tuple] = {}
+        self._img_labels: list[tk.Label] = []
+        self.csv_tree.bind("<MouseWheel>",
+                           lambda e: self.csv_tree.after(5, self._update_img_labels))
 
     # ------------------------------------------------------------------
     # Results list
@@ -205,8 +214,50 @@ class ViewResults:
                 for item in data
             ))
 
+    def _make_screenshot_icon(self) -> tk.PhotoImage:
+        img = tk.PhotoImage(width=14, height=11)
+        b = RED
+        w = BG2
+        img.put(w, to=(1, 1, 13, 10))        # white fill
+        img.put(b, to=(0, 0, 14, 1))          # top border
+        img.put(b, to=(0, 10, 14, 11))        # bottom border
+        img.put(b, to=(0, 0, 1, 11))          # left border
+        img.put(b, to=(13, 0, 14, 11))        # right border
+        img.put(b, to=(2, 2, 4, 4))           # sun
+        img.put(b, to=(3, 7, 4, 8))           # mountain left peak
+        img.put(b, to=(2, 8, 5, 9))           # mountain left base
+        img.put(b, to=(6, 6, 7, 7))           # mountain right peak
+        img.put(b, to=(5, 7, 8, 8))           # mountain right mid
+        img.put(b, to=(4, 8, 9, 9))           # mountain right base
+        img.put(b, to=(9, 7, 13, 9))          # horizon line right
+        return img
+
+    def _on_tree_scroll(self, *args):
+        self._csv_sb.set(*args)
+        self._update_img_labels()
+
+    def _update_img_labels(self):
+        for lbl in self._img_labels:
+            lbl.destroy()
+        self._img_labels.clear()
+        for iid, (path, row_bg) in self._screenshot_paths.items():
+            bbox = self.csv_tree.bbox(iid, "img")
+            if not bbox:
+                continue
+            bx, by, bw, bh = bbox
+            lbl = tk.Label(self.csv_tree, image=self._screenshot_icon,
+                           bg=row_bg, cursor="hand2",
+                           borderwidth=0, padx=0, pady=0)
+            lbl.place(x=bx + (bw - 14) // 2, y=by + (bh - 11) // 2)
+            lbl.bind("<Button-1>", lambda e, p=path: os.startfile(p))
+            self._img_labels.append(lbl)
+
     def _load_results_into_tree(self, results: list[NavigationResult]):
+        for lbl in self._img_labels:
+            lbl.destroy()
+        self._img_labels.clear()
         self.csv_tree.delete(*self.csv_tree.get_children())
+        self._screenshot_paths.clear()
         for idx, r in enumerate(sorted(results, key=lambda x: x.timestamp)):
             time_str = r.timestamp.split(" ", 1)[1] if " " in r.timestamp else r.timestamp
             status   = "Error" if r.status == "ERROR" else "OK"
@@ -216,7 +267,12 @@ class ViewResults:
             desc     = f"{desc_raw} — {title}" if title else desc_raw
             ms       = str(r.load_time_ms) if r.load_time_ms else ""
             color_tag = "err" if r.status == "ERROR" else "ok"
-            tags = (color_tag, "stripe") if idx % 2 == 1 else (color_tag,)
-            self.csv_tree.insert("", tk.END,
-                                 values=(time_str, status, ms, desc, error),
-                                 tags=tags)
+            tags      = (color_tag, "stripe") if idx % 2 == 1 else (color_tag,)
+            row_bg    = BG if idx % 2 == 1 else BG2
+            iid = self.csv_tree.insert(
+                "", tk.END,
+                values=(time_str, status, ms, desc, "", error),
+                tags=tags)
+            if r.screenshot_path and os.path.isfile(r.screenshot_path):
+                self._screenshot_paths[iid] = (r.screenshot_path, row_bg)
+        self.csv_tree.after(10, self._update_img_labels)

@@ -139,12 +139,13 @@ class ViewTesting:
         footer.pack(fill=tk.X, pady=(4, 0))
 
         self._automated_var = tk.BooleanVar()
-        tk.Checkbutton(
-            footer, text="Automated", variable=self._automated_var,
-            bg=BG, fg=FG, selectcolor=BG,
-            activebackground=BG, activeforeground=ACCENT,
-            font=(FONT, 9), command=self._on_automated_toggle
-        ).pack(side=tk.LEFT, padx=(4, 0))
+        self._screenshot_on_error_var = tk.BooleanVar()
+
+        self._settings_btn = tk.Label(footer, text="⚙", bg=BG, fg=FG_SEC,
+                                      font=(FONT, 13), cursor="hand2")
+        self._settings_btn.pack(side=tk.LEFT, padx=(4, 0))
+        self._settings_btn.bind("<Button-1>", lambda _: self._on_tc_settings())
+        add_tooltip(self._settings_btn, "Testcase Settings")
 
         self.save_btn = tk.Label(footer, text="💾", bg=BG, fg=FG,
                                  font=(FONT, 13), cursor="hand2")
@@ -376,7 +377,10 @@ class ViewTesting:
     # ------------------------------------------------------------------
 
     def _load_into_editor(self, name: str):
-        from adapters.database.testcases import fetch_testcase_yaml, fetch_automated, fetch_comment
+        from adapters.database.testcases import (
+            fetch_testcase_yaml, fetch_automated, fetch_comment,
+            fetch_screenshot_on_error,
+        )
         yaml_text, _ = fetch_testcase_yaml(name)
         self.editor.delete("1.0", tk.END)
         self.editor.insert("1.0", yaml_text)
@@ -385,12 +389,90 @@ class ViewTesting:
         self._current_comment = fetch_comment(name)
         self.editor_title.configure(text=name, fg=FG)
         self._automated_var.set(fetch_automated(name))
+        self._screenshot_on_error_var.set(fetch_screenshot_on_error(name))
+        self._refresh_settings_icon()
 
-    def _on_automated_toggle(self):
+    def _on_tc_settings(self):
         if not self._current_tc_name:
             return
-        from adapters.database.testcases import update_automated
-        update_automated(self._current_tc_name, self._automated_var.get())
+        popup = tk.Toplevel(self.root)
+        popup.withdraw()
+        popup.overrideredirect(True)
+        popup.configure(bg=BORDER)
+        popup.transient(self.root)
+
+        inner = tk.Frame(popup, bg=BG)
+        inner.pack(fill=tk.BOTH, expand=True, padx=1, pady=1)
+
+        header = tk.Label(inner, text="Testcase Settings", bg=ACCENT, fg="#ffffff",
+                          font=(FONT, 10, "bold"), anchor="w",
+                          padx=14, pady=10, cursor="fleur")
+        header.pack(fill=tk.X)
+
+        def _start_drag(e):
+            popup._drag_x = e.x_root - popup.winfo_x()
+            popup._drag_y = e.y_root - popup.winfo_y()
+
+        def _drag(e):
+            popup.geometry(f"+{e.x_root - popup._drag_x}+{e.y_root - popup._drag_y}")
+
+        header.bind("<ButtonPress-1>", _start_drag)
+        header.bind("<B1-Motion>",     _drag)
+
+        body = tk.Frame(inner, bg=BG)
+        body.pack(fill=tk.X, padx=14, pady=(10, 4))
+
+        tc_name = self._current_tc_name
+
+        auto_var = tk.BooleanVar(value=self._automated_var.get())
+        sce_var  = tk.BooleanVar(value=self._screenshot_on_error_var.get())
+
+        def _save_to_db():
+            from adapters.database.testcases import update_automated, update_screenshot_on_error
+            update_automated(tc_name, auto_var.get())
+            update_screenshot_on_error(tc_name, sce_var.get())
+            self._automated_var.set(auto_var.get())
+            self._screenshot_on_error_var.set(sce_var.get())
+            self._refresh_settings_icon()
+
+        tk.Checkbutton(
+            body, text="Automated", variable=auto_var,
+            bg=BG, fg=FG, selectcolor=BG,
+            activebackground=BG, activeforeground=ACCENT,
+            font=(FONT, 9), command=_save_to_db,
+        ).pack(anchor="w")
+
+        tk.Checkbutton(
+            body, text="Screenshot on Error", variable=sce_var,
+            bg=BG, fg=FG, selectcolor=BG,
+            activebackground=BG, activeforeground=ACCENT,
+            font=(FONT, 9), command=_save_to_db,
+        ).pack(anchor="w", pady=(4, 0))
+
+        tk.Frame(inner, bg=BORDER, height=1).pack(fill=tk.X, pady=(10, 0))
+
+        btn_row = tk.Frame(inner, bg=BG)
+        btn_row.pack(fill=tk.X, padx=14, pady=10)
+
+        close_lbl = tk.Label(btn_row, text="Close", bg=BG, fg=FG_SEC,
+                             font=(FONT, 9), cursor="hand2")
+        close_lbl.pack(side=tk.RIGHT)
+        close_lbl.bind("<Button-1>", lambda _: popup.destroy())
+
+        popup.update_idletasks()
+        pw = popup.winfo_reqwidth()
+        ph = popup.winfo_reqheight()
+        x = self.root.winfo_rootx() + (self.root.winfo_width() - pw) // 2
+        y = self.root.winfo_rooty() + (self.root.winfo_height() - ph) // 2
+        popup.geometry(f"{pw}x{ph}+{x}+{y}")
+        popup.deiconify()
+        popup.grab_set()
+        popup.lift()
+        popup.focus_force()
+
+    def _refresh_settings_icon(self):
+        active = self._automated_var.get() or self._screenshot_on_error_var.get()
+        self._settings_btn.configure(fg=ACCENT if active else FG_SEC)
 
     def _on_comment(self):
         if not self._current_tc_name:

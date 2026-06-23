@@ -12,12 +12,12 @@ def save_results(run_name: str, results: list[NavigationResult],
             INSERT INTO testresults
                 (run_name, release, status, error_detail, url, page_title,
                  method, description, element_text, source_url,
-                 http_status, load_time_ms, depth, timestamp)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                 http_status, load_time_ms, depth, screenshot_path, timestamp)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (
             run_name, release, r.status, r.error_detail, r.url, r.page_title,
             r.method, r.description, r.element_text, r.source_url,
-            r.http_status, r.load_time_ms, r.depth,
+            r.http_status, r.load_time_ms, r.depth, r.screenshot_path,
             r.timestamp or datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         ))
     conn.commit()
@@ -31,7 +31,7 @@ def fetch_results(run_name: str) -> list[NavigationResult]:
     rows = conn.execute("""
         SELECT status, error_detail, url, page_title, method,
                description, element_text, source_url, http_status,
-               load_time_ms, depth, timestamp
+               load_time_ms, depth, screenshot_path, timestamp
         FROM testresults
         WHERE run_name = ?
         ORDER BY timestamp
@@ -43,7 +43,9 @@ def fetch_results(run_name: str) -> list[NavigationResult]:
             method=r["method"], description=r["description"],
             element_text=r["element_text"], source_url=r["source_url"],
             http_status=r["http_status"], load_time_ms=r["load_time_ms"],
-            depth=r["depth"], timestamp=str(r["timestamp"]),
+            depth=r["depth"],
+            screenshot_path=str(r["screenshot_path"] or ""),
+            timestamp=str(r["timestamp"]),
         )
         for r in rows
     ]
@@ -86,8 +88,20 @@ def fetch_release(run_name: str) -> str:
 
 
 def delete_run(run_name: str) -> None:
+    import os
     from adapters.database.connection import get_connection
     conn = get_connection()
+    rows = conn.execute(
+        "SELECT screenshot_path FROM testresults WHERE run_name = ? AND screenshot_path != ''",
+        (run_name,)
+    ).fetchall()
+    for row in rows:
+        path = row["screenshot_path"]
+        try:
+            if os.path.isfile(path):
+                os.remove(path)
+        except Exception:
+            pass
     conn.execute("DELETE FROM testresults WHERE run_name = ?", (run_name,))
     conn.commit()
 

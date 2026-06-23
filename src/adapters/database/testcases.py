@@ -52,6 +52,23 @@ def update_automated(name: str, value: bool) -> None:
     conn.commit()
 
 
+def fetch_screenshot_on_error(name: str) -> bool:
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT screenshot_on_error FROM testcases WHERE name = ?", (name,)
+    ).fetchone()
+    return bool(row["screenshot_on_error"]) if row else False
+
+
+def update_screenshot_on_error(name: str, value: bool) -> None:
+    conn = get_connection()
+    conn.execute(
+        "UPDATE testcases SET screenshot_on_error = ? WHERE name = ?",
+        (1 if value else 0, name)
+    )
+    conn.commit()
+
+
 def list_automated_testcases() -> list[str]:
     conn = get_connection()
     rows = conn.execute(

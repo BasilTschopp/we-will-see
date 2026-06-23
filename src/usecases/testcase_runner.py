@@ -3,6 +3,7 @@ import re
 import time
 from datetime import datetime
 
+
 _VERSION_TRIGGER_SELECTORS = [
     '[data-test="version-btn"]',
     'button[title="Version"]',
@@ -106,8 +107,9 @@ def _read_release_from_page(driver) -> str:
 from usecases.value_resolver import resolve_input_value
 from selenium.webdriver.common.by import By
 
-_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-_FILES_DIR = os.path.join(_PROJECT_ROOT, "data", "testfiles")
+_PROJECT_ROOT    = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_FILES_DIR       = os.path.join(_PROJECT_ROOT, "data", "testfiles")
+_SCREENSHOTS_DIR = os.path.join(_PROJECT_ROOT, "data", "screenshots")
 
 
 def _resolve_file_path(value: str) -> str:
@@ -155,6 +157,7 @@ def _run_sequential(app, tc_names: list[str], headless: bool):
         password = ""
         private = False
 
+        screenshot_on_error = False
         for name in tc_names:
             items, meta = load_testcases(name)
             all_items.extend(items)
@@ -168,6 +171,9 @@ def _run_sequential(app, tc_names: list[str], headless: bool):
                 password = str(meta["password"]).strip()
             if meta.get("private"):
                 private = bool(meta["private"])
+            from adapters.database.testcases import fetch_screenshot_on_error as _fetch_sce
+            if _fetch_sce(name):
+                screenshot_on_error = True
 
         if not url:
             log.error("No URL found in YAML meta.")
@@ -193,7 +199,9 @@ def _run_sequential(app, tc_names: list[str], headless: bool):
         result_name = f"{ts} - {', '.join(tc_names)}"
         release = _read_release_from_page(app.driver)
 
-        tester = NavigationTester(driver=app.driver, items=all_items)
+        tester = NavigationTester(driver=app.driver, items=all_items,
+                                  screenshot_on_error=screenshot_on_error,
+                                  screenshot_dir=_SCREENSHOTS_DIR)
         app.results = tester.test_all()
 
         save_results(result_name, app.results, release)
@@ -276,11 +284,14 @@ def _run_single_tc(app, name: str, headless: bool):
         if not app.running:
             return
 
+        from adapters.database.testcases import fetch_screenshot_on_error as _fetch_sce
         ts = datetime.now().strftime("%y.%m.%d - %H:%M")
         result_name = f"{ts} - {name}"
         release = _read_release_from_page(driver)
 
-        results = NavigationTester(driver=driver, items=items).test_all()
+        results = NavigationTester(driver=driver, items=items,
+                                   screenshot_on_error=_fetch_sce(name),
+                                   screenshot_dir=_SCREENSHOTS_DIR).test_all()
         save_results(result_name, results, release)
 
         ok  = sum(1 for r in results if r.status == "OK")
@@ -357,7 +368,10 @@ def _run_single_tc_cli(name: str):
         result_name = f"{ts} - {name}"
         release = _read_release_from_page(driver)
 
-        results = NavigationTester(driver=driver, items=items).test_all()
+        from adapters.database.testcases import fetch_screenshot_on_error as _fetch_sce
+        results = NavigationTester(driver=driver, items=items,
+                                   screenshot_on_error=_fetch_sce(name),
+                                   screenshot_dir=_SCREENSHOTS_DIR).test_all()
         save_results(result_name, results, release)
 
         ok  = sum(1 for r in results if r.status == "OK")
@@ -455,11 +469,15 @@ def run_record(app, url: str, tc_name: str,
 
 class NavigationTester:
 
-    def __init__(self, driver, items: list[NavigationItem]):
+    def __init__(self, driver, items: list[NavigationItem],
+                 screenshot_on_error: bool = False,
+                 screenshot_dir: str = ""):
         self.driver  = driver
         self.items   = items
         self.results: list[NavigationResult] = []
         self._context: dict = {}
+        self._screenshot_on_error = screenshot_on_error
+        self._screenshot_dir = screenshot_dir
 
     def _update_overlay(self, idx: int, total: int, item) -> None:
         try:
@@ -527,12 +545,13 @@ class NavigationTester:
             "table_row":   self._test_table_row,
             "form_input":  self._test_form_input,
             "click":       self._test_click,
-            "assert":          self._test_assert_text,
-            "assert_text":     self._test_assert_text,
-            "assert_error":    self._test_assert_not_text,
-            "log_text":        self._test_log_text,
-            "read_value":  self._test_read_value,
-            "wait":        self._test_wait,
+            "assert":            self._test_assert_text,
+            "assert_text":       self._test_assert_text,
+            "assert_error":      self._test_assert_not_text,
+            "assert_date_within": self._test_assert_date_within,
+            "log_text":          self._test_log_text,
+            "read_value":        self._test_read_value,
+            "wait":              self._test_wait,
         }
 
         for idx, item in enumerate(self.items, 1):
@@ -1116,6 +1135,57 @@ class NavigationTester:
                          error=f"Assert not text: {str(e)[:150]}",
                          load_ms=int((time.time() - start) * 1000))
 
+    def _test_assert_date_within(self, item: NavigationItem):
+        from datetime import datetime, timedelta
+        start = time.time()
+        try:
+            hours = float(item.input_value) if item.input_value else 24.0
+            if item.source_url:
+                self.driver.get(item.source_url)
+                self._wait_for_dom_stable()
+            if item.selector:
+                try:
+                    el = WebDriverWait(self.driver, 10).until(
+                        EC.presence_of_element_located(
+                            (By.CSS_SELECTOR, item.selector)))
+                    text = (el.get_attribute("textContent") or el.text or "").strip()
+                except TimeoutException:
+                    text = ""
+            else:
+                text = self.driver.find_element(By.TAG_NAME, "body").text or ""
+
+            load_ms = int((time.time() - start) * 1000)
+
+            parsed = None
+            for fmt in ("%d.%m.%Y, %H:%M:%S", "%d.%m.%Y %H:%M:%S", "%d.%m.%Y"):
+                try:
+                    parsed = datetime.strptime(text.strip(), fmt)
+                    break
+                except ValueError:
+                    continue
+
+            if parsed is None:
+                self._record(item, status="ERROR",
+                             error=f"Datum nicht parsbar: '{text[:60]}'",
+                             load_ms=load_ms)
+                return
+
+            age = datetime.now() - parsed
+            age_h = int(age.total_seconds() / 3600)
+            if age <= timedelta(hours=hours):
+                self._record(item, status="OK",
+                             title=f"Letzter Lauf: {text} ({age_h}h alt)",
+                             load_ms=load_ms)
+                log.info(f"  OK ({load_ms}ms) — {age_h}h alt")
+            else:
+                self._record(item, status="ERROR",
+                             error=f"Letzter Lauf zu alt: {text} ({age_h}h > {int(hours)}h)",
+                             load_ms=load_ms)
+        except Exception as e:
+            self._record(item, status="ERROR",
+                         error=f"assert_date_within: {str(e)[:150]}",
+                         load_ms=int((time.time() - start) * 1000))
+
     def _test_log_text(self, item: NavigationItem):
         start = time.time()
         try:
@@ -1215,17 +1285,38 @@ class NavigationTester:
         except Exception:
             return ""
 
+    def _take_screenshot(self, item: NavigationItem) -> str:
+        if not self._screenshot_dir:
+            return ""
+        try:
+            os.makedirs(self._screenshot_dir, exist_ok=True)
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+            safe = re.sub(r'[^\w\-]', '_', item.description or item.method)[:40]
+            filename = f"{ts}_{safe}.png"
+            path = os.path.join(self._screenshot_dir, filename)
+            self.driver.save_screenshot(path)
+            log.info(f"  Screenshot saved: {path}")
+            return path
+        except Exception as exc:
+            log.warning(f"  Screenshot failed: {exc}")
+            return ""
+
     def _record(self, item: NavigationItem, status: str,
                 error: str = "", title: str = "", load_ms: int = 0):
         error = error.replace("\n", " ").replace("\r", "")
+        screenshot_path = ""
         if status == "ERROR":
             log.info(f"  ERROR: {error}")
+            log.info(f"  screenshot_on_error={self._screenshot_on_error!r}  "
+                     f"screenshot_dir={self._screenshot_dir!r}")
+            if self._screenshot_on_error:
+                screenshot_path = self._take_screenshot(item)
         self.results.append(NavigationResult(
             status=status, error_detail=error, url=item.url,
             page_title=title, method=item.method,
             description=item.description, element_text=item.element_text,
             source_url=item.source_url, load_time_ms=load_ms,
-            depth=item.depth,
+            depth=item.depth, screenshot_path=screenshot_path,
             timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         ))
 

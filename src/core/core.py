@@ -37,6 +37,7 @@ class NavigationResult:
     http_status: str = ""
     load_time_ms: int = 0
     depth: int = 0
+    screenshot_path: str = ""
     timestamp: str = ""
 
 
