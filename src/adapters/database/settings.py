@@ -70,3 +70,5 @@ def get_report_include_screenshots() -> bool:
 
 def set_report_include_screenshots(value: bool) -> None:
     set_setting("report_include_screenshots", "1" if value else "0")
+
+

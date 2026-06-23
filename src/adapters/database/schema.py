@@ -16,6 +16,10 @@ def create_tables():
             yaml_text           TEXT    NOT NULL DEFAULT '',
             automated           INTEGER NOT NULL DEFAULT 0,
             screenshot_on_error INTEGER NOT NULL DEFAULT 0,
+            run_timeout         INTEGER NOT NULL DEFAULT 0,
+            step_timeout        INTEGER NOT NULL DEFAULT 0,
+            parallel            INTEGER NOT NULL DEFAULT 0,
+            stop_on_error       INTEGER NOT NULL DEFAULT 0,
             created_at          TEXT    NOT NULL DEFAULT (datetime('now')),
             updated_at          TEXT    NOT NULL DEFAULT (datetime('now'))
         );
@@ -83,4 +87,14 @@ def create_tables():
         conn.commit()
     except Exception:
         pass
+    # migration: add run_timeout, step_timeout and parallel columns to testcases
+    for col in ("run_timeout INTEGER NOT NULL DEFAULT 0",
+                "step_timeout INTEGER NOT NULL DEFAULT 0",
+                "parallel INTEGER NOT NULL DEFAULT 0",
+                "stop_on_error INTEGER NOT NULL DEFAULT 0"):
+        try:
+            conn.execute(f"ALTER TABLE testcases ADD COLUMN {col}")
+            conn.commit()
+        except Exception:
+            pass
 

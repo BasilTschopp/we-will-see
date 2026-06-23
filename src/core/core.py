@@ -1,6 +1,6 @@
 ﻿import hashlib
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 log = logging.getLogger("app")
 log.setLevel(logging.DEBUG)
@@ -21,6 +21,8 @@ class NavigationItem:
     assert_text: str = ""
     store_as: str = ""
     optional: bool = False
+    foreach_var: str = ""
+    sub_steps: list = field(default_factory=list)
 
 
 @dataclass

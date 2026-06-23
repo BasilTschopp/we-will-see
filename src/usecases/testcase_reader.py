@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 import yaml
 
 from core.core import NavigationItem
@@ -15,6 +15,26 @@ def load_testcases(name: str) -> tuple[list[NavigationItem], dict]:
     return _parse_yaml_text(yaml_text, name)
 
 
+def _parse_step(tc: dict) -> NavigationItem:
+    sub = [_parse_step(s) for s in (tc.get("steps") or [])]
+    return NavigationItem(
+        url=tc.get("url", ""),
+        method=tc.get("method", "link"),
+        description=tc.get("description", ""),
+        element_text=tc.get("element_text", ""),
+        source_url=tc.get("source_url", ""),
+        depth=tc.get("depth", 0),
+        selector=tc.get("selector", ""),
+        input_value=str(tc.get("input_value", "")),
+        submit_key=tc.get("submit_key", ""),
+        assert_text=tc.get("assert_text", ""),
+        store_as=tc.get("store_as", ""),
+        optional=bool(tc.get("optional", False)),
+        foreach_var=tc.get("var", ""),
+        sub_steps=sub,
+    )
+
+
 def _parse_yaml_text(yaml_text: str,
                      label: str = "") -> tuple[list[NavigationItem], dict]:
     try:
@@ -27,24 +47,7 @@ def _parse_yaml_text(yaml_text: str,
         log.warning(f"Invalid YAML structure ({label})")
         return [], {}
 
-    meta  = data.get("meta", {})
-    items = [
-        NavigationItem(
-            url=tc.get("url", ""),
-            method=tc.get("method", "link"),
-            description=tc.get("description", ""),
-            element_text=tc.get("element_text", ""),
-            source_url=tc.get("source_url", ""),
-            depth=tc.get("depth", 0),
-            selector=tc.get("selector", ""),
-            input_value=tc.get("input_value", ""),
-            submit_key=tc.get("submit_key", ""),
-            assert_text=tc.get("assert_text", ""),
-            store_as=tc.get("store_as", ""),
-            optional=bool(tc.get("optional", False)),
-        )
-        for tc in data.get("testcases", [])
-    ]
+    meta  = data.get("meta", {}) or {}
+    items = [_parse_step(tc) for tc in (data.get("testcases") or [])]
     log.info(f"Testcase loaded: {label} ({len(items)} items)")
     return items, meta
-

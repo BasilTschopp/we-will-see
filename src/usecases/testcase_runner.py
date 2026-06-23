@@ -137,6 +137,39 @@ from usecases.testcase_reader import load_testcases
 from usecases.testcase_writer import save_testcase
 from usecases.testcase_recorder import SessionRecorder
 
+def _expand_matrix(matrix: dict) -> list[tuple[dict, str]]:
+    """Return one (vars_dict, label) tuple per matrix iteration.
+
+    Scalar values are constants (single iteration, not shown in label).
+    List values drive iterations and appear in the run label.
+    """
+    if not matrix:
+        return [({}, "")]
+    from itertools import product as _product
+    keys = list(matrix.keys())
+    value_lists = []
+    is_multi = {}
+    for k in keys:
+        entries = matrix[k]
+        if not isinstance(entries, list):
+            entries = [entries]
+            is_multi[k] = False
+        else:
+            is_multi[k] = True
+        value_lists.append(entries)
+    result = []
+    for combo in _product(*value_lists):
+        vars_copy = {}
+        label_parts = []
+        for k, v in zip(keys, combo):
+            vars_copy[k] = v
+            if is_multi[k]:
+                label_parts.append(", ".join(str(x) for x in v) if isinstance(v, list) else str(v))
+        result.append((vars_copy, " / ".join(label_parts)))
+    return result
+
+
+
 def run_test(app, tc_names: list[str], headless: bool = True):
     if len(tc_names) == 1:
         _run_sequential(app, tc_names, headless)
@@ -144,11 +177,73 @@ def run_test(app, tc_names: list[str], headless: bool = True):
         _run_parallel(app, tc_names, headless)
 
 
-def _run_sequential(app, tc_names: list[str], headless: bool):
+def _run_matrix_iter_worker(app, tc_names, all_items, meta, iter_vars, iter_label,
+                             ts, headless, screenshot_on_error, step_timeout, stop_on_error):
+    import copy
     from adapters.browser.driver import start_browser, quit_browser
     from adapters.browser.login import login
     from adapters.database.testresults import save_results
 
+    driver = None
+    try:
+        url          = meta.get("url", "")
+        browser_name = (meta.get("browser") or "chrome").strip().lower()
+        username     = str(meta.get("username", "")).strip()
+        password     = str(meta.get("password", "")).strip()
+        private      = bool(meta.get("private", False))
+
+        if browser_name not in ("chrome", "edge", "firefox"):
+            browser_name = "chrome"
+
+        driver = start_browser(headless=headless, browser=browser_name, private=private)
+        app.drivers.append(driver)
+
+        login(driver, url, username, password)
+        dismiss_cookie_banner(driver)
+
+        release     = _read_release_from_page(driver)
+        base_name   = f"{ts} - {', '.join(tc_names)}"
+        result_name = base_name + (f" [{iter_label}]" if iter_label else "")
+
+        results = NavigationTester(driver=driver, items=copy.deepcopy(all_items),
+                                   screenshot_on_error=screenshot_on_error,
+                                   screenshot_dir=_SCREENSHOTS_DIR,
+                                   vars_context=iter_vars,
+                                   step_timeout=step_timeout,
+                                   stop_check=lambda: not app.running,
+                                   stop_on_error=stop_on_error).test_all()
+        save_results(result_name, results, release)
+        app.root.after(0, app._refresh_results_list)
+
+        ok  = sum(1 for r in results if r.status == "OK")
+        err = sum(1 for r in results if r.status == "ERROR")
+        log.info(f"Done [{result_name}] — {ok} OK, {err} errors")
+
+        if err:
+            from adapters.notification.email_notifier import send_failure_alert
+            try:
+                send_failure_alert(result_name, results)
+            except Exception as mail_exc:
+                log.error(f"Email alert failed [{iter_label}]: {mail_exc}")
+
+    except Exception as e:
+        log.error(f"Matrix worker error [{iter_label}]: {e}")
+    finally:
+        if driver is not None:
+            try:
+                app.drivers.remove(driver)
+            except ValueError:
+                pass
+            quit_browser(driver)
+
+
+def _run_sequential(app, tc_names: list[str], headless: bool):
+    import threading
+    from adapters.browser.driver import start_browser, quit_browser
+    from adapters.browser.login import login
+    from adapters.database.testresults import save_results
+
+    _timeout_timer = None
     try:
         all_items = []
         url = ""
@@ -156,24 +251,39 @@ def _run_sequential(app, tc_names: list[str], headless: bool):
         username = ""
         password = ""
         private = False
-
         screenshot_on_error = False
+        run_timeout    = 0
+        step_timeout   = 0
+        parallel_db    = False
+        stop_on_error  = False
+        merged_matrix: dict = {}
+        merged_meta: dict = {}
+
         for name in tc_names:
             items, meta = load_testcases(name)
             all_items.extend(items)
-            if meta.get("url"):
-                url = meta["url"]
-            if meta.get("browser"):
-                browser_name = meta["browser"].strip().lower()
-            if meta.get("username"):
-                username = str(meta["username"]).strip()
-            if meta.get("password"):
-                password = str(meta["password"]).strip()
-            if meta.get("private"):
-                private = bool(meta["private"])
-            from adapters.database.testcases import fetch_screenshot_on_error as _fetch_sce
+            merged_meta.update(meta)
+            merged_matrix.update(meta.get("matrix") or {})
+            if meta.get("url"):      url          = meta["url"]
+            if meta.get("browser"):  browser_name = meta["browser"].strip().lower()
+            if meta.get("username"): username     = str(meta["username"]).strip()
+            if meta.get("password"): password     = str(meta["password"]).strip()
+            if meta.get("private"):  private      = bool(meta["private"])
+            from adapters.database.testcases import (
+                fetch_screenshot_on_error as _fetch_sce,
+                fetch_run_timeout as _fetch_rt,
+                fetch_step_timeout as _fetch_st,
+                fetch_parallel as _fetch_par,
+                fetch_stop_on_error as _fetch_soe,
+            )
             if _fetch_sce(name):
                 screenshot_on_error = True
+            run_timeout  = max(run_timeout,  _fetch_rt(name))
+            step_timeout = max(step_timeout, _fetch_st(name))
+            if _fetch_par(name):
+                parallel_db = True
+            if _fetch_soe(name):
+                stop_on_error = True
 
         if not url:
             log.error("No URL found in YAML meta.")
@@ -185,44 +295,80 @@ def _run_sequential(app, tc_names: list[str], headless: bool):
         if browser_name not in ("chrome", "edge", "firefox"):
             browser_name = "chrome"
 
-        app.driver = start_browser(headless=headless,
-                                   browser=browser_name, private=private)
-        if not app.running:
-            return
+        merged_matrix.pop("parallel", None)  # clean up legacy YAML key
+        parallel   = parallel_db
+        iterations = _expand_matrix(merged_matrix)
+        ts         = datetime.now().strftime("%y.%m.%d - %H:%M")
+        base_name  = f"{ts} - {', '.join(tc_names)}"
 
-        login(app.driver, url, username, password)
-        dismiss_cookie_banner(app.driver)
-        if not app.running:
-            return
+        if run_timeout > 0:
+            def _abort_on_timeout():
+                log.warning(f"Run timeout after {run_timeout} min — aborting.")
+                app.running = False
+            _timeout_timer = threading.Timer(run_timeout * 60, _abort_on_timeout)
+            _timeout_timer.daemon = True
+            _timeout_timer.start()
 
-        ts = datetime.now().strftime("%y.%m.%d - %H:%M")
-        result_name = f"{ts} - {', '.join(tc_names)}"
-        release = _read_release_from_page(app.driver)
+        if parallel:
+            threads = [
+                threading.Thread(
+                    target=_run_matrix_iter_worker,
+                    args=(app, tc_names, all_items, merged_meta,
+                          iter_vars, iter_label, ts, headless,
+                          screenshot_on_error, step_timeout, stop_on_error),
+                    daemon=True,
+                )
+                for iter_vars, iter_label in iterations
+            ]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+        else:
+            app.driver = start_browser(headless=headless,
+                                       browser=browser_name, private=private)
+            if not app.running:
+                return
+            login(app.driver, url, username, password)
+            dismiss_cookie_banner(app.driver)
+            if not app.running:
+                return
 
-        tester = NavigationTester(driver=app.driver, items=all_items,
-                                  screenshot_on_error=screenshot_on_error,
-                                  screenshot_dir=_SCREENSHOTS_DIR)
-        app.results = tester.test_all()
+            release    = _read_release_from_page(app.driver)
+            app.results = []
+            for iter_vars, iter_label in iterations:
+                if not app.running:
+                    break
+                result_name = base_name + (f" [{iter_label}]" if iter_label else "")
+                results = NavigationTester(driver=app.driver, items=all_items,
+                                           screenshot_on_error=screenshot_on_error,
+                                           screenshot_dir=_SCREENSHOTS_DIR,
+                                           vars_context=iter_vars,
+                                           step_timeout=step_timeout,
+                                           stop_check=lambda: not app.running,
+                                           stop_on_error=stop_on_error).test_all()
+                app.results.extend(results)
+                save_results(result_name, results, release)
+                app.root.after(0, app._refresh_results_list)
 
-        save_results(result_name, app.results, release)
-
-        ok  = sum(1 for r in app.results if r.status == "OK")
-        err = sum(1 for r in app.results if r.status == "ERROR")
-        log.info(f"Done — {ok} OK, {err} errors")
-        if err:
-            from adapters.notification.email_notifier import send_failure_alert
-            try:
-                send_failure_alert(result_name, app.results)
-            except Exception as mail_exc:
-                log.error(f"Email alert failed: {mail_exc}")
-                from tkinter import messagebox
-                app.root.after(0, lambda e=mail_exc: messagebox.showerror(
-                    "Email Alert", f"Failed to send alert email:\n{e}"))
-        app.root.after(0, app._refresh_results_list)
+                ok  = sum(1 for r in results if r.status == "OK")
+                err = sum(1 for r in results if r.status == "ERROR")
+                log.info(f"Done [{result_name}] — {ok} OK, {err} errors")
+                if err:
+                    from adapters.notification.email_notifier import send_failure_alert
+                    try:
+                        send_failure_alert(result_name, results)
+                    except Exception as mail_exc:
+                        log.error(f"Email alert failed: {mail_exc}")
+                        from tkinter import messagebox
+                        app.root.after(0, lambda e=mail_exc: messagebox.showerror(
+                            "Email Alert", f"Failed to send alert email:\n{e}"))
 
     except Exception as e:
         log.error(f"Error: {e}")
     finally:
+        if _timeout_timer is not None:
+            _timeout_timer.cancel()
         from adapters.browser.driver import quit_browser
         quit_browser(app.driver)
         app.driver  = None
@@ -284,26 +430,40 @@ def _run_single_tc(app, name: str, headless: bool):
         if not app.running:
             return
 
-        from adapters.database.testcases import fetch_screenshot_on_error as _fetch_sce
-        ts = datetime.now().strftime("%y.%m.%d - %H:%M")
-        result_name = f"{ts} - {name}"
+        ts      = datetime.now().strftime("%y.%m.%d - %H:%M")
         release = _read_release_from_page(driver)
+        from adapters.database.testcases import (
+            fetch_screenshot_on_error as _fetch_sce,
+            fetch_step_timeout as _fetch_st,
+            fetch_stop_on_error as _fetch_soe,
+        )
+        screenshot_on_error = _fetch_sce(name)
+        step_timeout        = _fetch_st(name)
+        stop_on_error       = _fetch_soe(name)
 
-        results = NavigationTester(driver=driver, items=items,
-                                   screenshot_on_error=_fetch_sce(name),
-                                   screenshot_dir=_SCREENSHOTS_DIR).test_all()
-        save_results(result_name, results, release)
+        iterations = _expand_matrix(dict(meta.get("matrix") or {}))
 
-        ok  = sum(1 for r in results if r.status == "OK")
-        err = sum(1 for r in results if r.status == "ERROR")
-        log.info(f"Done [{name}] — {ok} OK, {err} errors")
+        for iter_vars, iter_label in iterations:
+            result_name = f"{ts} - {name}" + (f" [{iter_label}]" if iter_label else "")
+            results = NavigationTester(driver=driver, items=items,
+                                       screenshot_on_error=screenshot_on_error,
+                                       screenshot_dir=_SCREENSHOTS_DIR,
+                                       vars_context=iter_vars,
+                                       step_timeout=step_timeout,
+                                       stop_check=lambda: not app.running,
+                                       stop_on_error=stop_on_error).test_all()
+            save_results(result_name, results, release)
 
-        if err:
-            from adapters.notification.email_notifier import send_failure_alert
-            try:
-                send_failure_alert(result_name, results)
-            except Exception as mail_exc:
-                log.error(f"Email alert failed [{name}]: {mail_exc}")
+            ok  = sum(1 for r in results if r.status == "OK")
+            err = sum(1 for r in results if r.status == "ERROR")
+            log.info(f"Done [{result_name}] — {ok} OK, {err} errors")
+
+            if err:
+                from adapters.notification.email_notifier import send_failure_alert
+                try:
+                    send_failure_alert(result_name, results)
+                except Exception as mail_exc:
+                    log.error(f"Email alert failed [{name}]: {mail_exc}")
 
     except Exception as e:
         log.error(f"Error [{name}]: {e}")
@@ -364,23 +524,36 @@ def _run_single_tc_cli(name: str):
         login(driver, url, username, password)
         dismiss_cookie_banner(driver)
 
-        ts = datetime.now().strftime("%y.%m.%d - %H:%M")
-        result_name = f"{ts} - {name}"
+        ts      = datetime.now().strftime("%y.%m.%d - %H:%M")
         release = _read_release_from_page(driver)
 
-        from adapters.database.testcases import fetch_screenshot_on_error as _fetch_sce
-        results = NavigationTester(driver=driver, items=items,
-                                   screenshot_on_error=_fetch_sce(name),
-                                   screenshot_dir=_SCREENSHOTS_DIR).test_all()
-        save_results(result_name, results, release)
+        from adapters.database.testcases import (
+            fetch_screenshot_on_error as _fetch_sce,
+            fetch_step_timeout as _fetch_st,
+            fetch_stop_on_error as _fetch_soe,
+        )
+        screenshot_on_error = _fetch_sce(name)
+        step_timeout        = _fetch_st(name)
+        stop_on_error       = _fetch_soe(name)
+        iterations = _expand_matrix(dict(meta.get("matrix") or {}))
 
-        ok  = sum(1 for r in results if r.status == "OK")
-        err = sum(1 for r in results if r.status == "ERROR")
-        print(f"[{name}] Done — {ok} OK, {err} errors  |  {result_name}")
+        for iter_vars, iter_label in iterations:
+            result_name = f"{ts} - {name}" + (f" [{iter_label}]" if iter_label else "")
+            results = NavigationTester(driver=driver, items=items,
+                                       screenshot_on_error=screenshot_on_error,
+                                       screenshot_dir=_SCREENSHOTS_DIR,
+                                       vars_context=iter_vars,
+                                       step_timeout=step_timeout,
+                                       stop_on_error=stop_on_error).test_all()
+            save_results(result_name, results, release)
 
-        if err:
-            from adapters.notification.email_notifier import send_failure_alert
-            send_failure_alert(result_name, results, automated=True)
+            ok  = sum(1 for r in results if r.status == "OK")
+            err = sum(1 for r in results if r.status == "ERROR")
+            print(f"[{name}] Done — {ok} OK, {err} errors  |  {result_name}")
+
+            if err:
+                from adapters.notification.email_notifier import send_failure_alert
+                send_failure_alert(result_name, results, automated=True)
 
     except Exception as e:
         print(f"ERROR [{name}]: {e}")
@@ -471,13 +644,20 @@ class NavigationTester:
 
     def __init__(self, driver, items: list[NavigationItem],
                  screenshot_on_error: bool = False,
-                 screenshot_dir: str = ""):
+                 screenshot_dir: str = "",
+                 vars_context: dict | None = None,
+                 step_timeout: int = 0,
+                 stop_check=None,
+                 stop_on_error: bool = False):
         self.driver  = driver
         self.items   = items
         self.results: list[NavigationResult] = []
-        self._context: dict = {}
+        self._context: dict = dict(vars_context or {})
         self._screenshot_on_error = screenshot_on_error
         self._screenshot_dir = screenshot_dir
+        self._step_timeout = step_timeout
+        self._stop_check = stop_check
+        self._stop_on_error = stop_on_error
 
     def _update_overlay(self, idx: int, total: int, item) -> None:
         try:
@@ -531,20 +711,22 @@ class NavigationTester:
             return False
 
     def test_all(self) -> list[NavigationResult]:
+        from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FuturesTimeout
+
         log.info(f"\n{'='*50}")
         log.info("PHASE 2: Testing navigations")
         log.info(f"{'='*50}")
 
         total = len(self.items)
-        dispatch = {
-            "link":        self._test_link,
-            "nav_click":   self._test_nav_click,
-            "modal":       self._test_modal,
-            "tab":         self._test_tab,
-            "pagination":  self._test_pagination,
-            "table_row":   self._test_table_row,
-            "form_input":  self._test_form_input,
-            "click":       self._test_click,
+        self._dispatch = {
+            "link":              self._test_link,
+            "nav_click":         self._test_nav_click,
+            "modal":             self._test_modal,
+            "tab":               self._test_tab,
+            "pagination":        self._test_pagination,
+            "table_row":         self._test_table_row,
+            "form_input":        self._test_form_input,
+            "click":             self._test_click,
             "assert":            self._test_assert_text,
             "assert_text":       self._test_assert_text,
             "assert_error":      self._test_assert_not_text,
@@ -552,19 +734,45 @@ class NavigationTester:
             "log_text":          self._test_log_text,
             "read_value":        self._test_read_value,
             "wait":              self._test_wait,
+            "foreach":           self._test_foreach,
         }
 
         for idx, item in enumerate(self.items, 1):
+            if self._stop_check and self._stop_check():
+                log.info("Test run stopped.")
+                break
             item.description = resolve_input_value(item.description, self._context)
             log.info(f"[{idx}/{total}] {item.method}: {item.description}")
             self._update_overlay(idx, total, item)
-            try:
-                handler = dispatch.get(item.method)
-                if handler:
+            handler = self._dispatch.get(item.method)
+            if not handler:
+                continue
+            results_before = len(self.results)
+            if self._step_timeout > 0:
+                ex = ThreadPoolExecutor(max_workers=1)
+                future = ex.submit(handler, item)
+                try:
+                    future.result(timeout=self._step_timeout)
+                except _FuturesTimeout:
+                    log.warning(f"Step timeout after {self._step_timeout}s: {item.description}")
+                    self._record(item, status="ERROR",
+                                 error=f"Step timeout after {self._step_timeout}s")
+                except Exception as e:
+                    self._record(item, status="ERROR",
+                                 error=f"Unexpected error: {str(e)[:200]}")
+                finally:
+                    ex.shutdown(wait=False)
+            else:
+                try:
                     handler(item)
-            except Exception as e:
-                self._record(item, status="ERROR",
-                             error=f"Unexpected error: {str(e)[:200]}")
+                except Exception as e:
+                    self._record(item, status="ERROR",
+                                 error=f"Unexpected error: {str(e)[:200]}")
+            if (self._stop_on_error
+                    and len(self.results) > results_before
+                    and self.results[-1].status == "ERROR"):
+                log.info("Stop on error: aborting after first error.")
+                break
 
         self._remove_overlay()
         ok  = sum(1 for r in self.results if r.status == "OK")
@@ -573,6 +781,66 @@ class NavigationTester:
         log.info(f"RESULT: {ok} OK  /  {err} ERRORS  /  {total} Total")
         log.info(f"{'='*50}")
         return self.results
+
+    def _test_foreach(self, item: NavigationItem) -> None:
+        import copy
+        from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FuturesTimeout
+
+        var_name  = item.foreach_var
+        var_value = self._context.get(var_name)
+
+        if isinstance(var_value, list):
+            values = var_value
+        elif var_value is not None:
+            values = [str(var_value)]
+        else:
+            log.warning(f"foreach: variable '{var_name}' not in context")
+            return
+
+        for val in values:
+            if self._stop_check and self._stop_check():
+                break
+            self._context[var_name] = val
+            log.info(f"  [foreach] {var_name} = {val!r}")
+            stop_foreach = False
+            for sub in item.sub_steps:
+                sub_copy = copy.copy(sub)
+                sub_copy.description = resolve_input_value(sub.description, self._context)
+                log.info(f"    {sub_copy.method}: {sub_copy.description}")
+                handler = self._dispatch.get(sub_copy.method)
+                if not handler:
+                    continue
+                results_before = len(self.results)
+                if self._step_timeout > 0:
+                    ex = ThreadPoolExecutor(max_workers=1)
+                    future = ex.submit(handler, sub_copy)
+                    try:
+                        future.result(timeout=self._step_timeout)
+                    except _FuturesTimeout:
+                        log.warning(f"Step timeout after {self._step_timeout}s: {sub_copy.description}")
+                        self._record(sub_copy, status="ERROR",
+                                     error=f"Step timeout after {self._step_timeout}s")
+                    except Exception as e:
+                        self._record(sub_copy, status="ERROR",
+                                     error=f"Unexpected error: {str(e)[:200]}")
+                    finally:
+                        ex.shutdown(wait=False)
+                else:
+                    try:
+                        handler(sub_copy)
+                    except Exception as e:
+                        self._record(sub_copy, status="ERROR",
+                                     error=f"Unexpected error: {str(e)[:200]}")
+                if (self._stop_on_error
+                        and len(self.results) > results_before
+                        and self.results[-1].status == "ERROR"):
+                    log.info("Stop on error: aborting foreach after first error.")
+                    stop_foreach = True
+                    break
+            if stop_foreach:
+                break
+
+        self._context[var_name] = var_value  # restore list
 
     def _navigate_and_find(self, item, selector, match_attr="text"):
         base = item.source_url or item.url.split("#")[0]

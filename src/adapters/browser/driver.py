@@ -291,14 +291,16 @@ def start_browser(headless: bool = True, browser: str = "chrome",
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--disable-gpu")
         options.add_argument("--window-size=1920,1080")
-        options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        options.add_argument("--log-level=3")
+        options.add_argument("--silent")
+        options.add_experimental_option("excludeSwitches", ["enable-automation", "enable-logging"])
         options.add_experimental_option("prefs", {
             "credentials_enable_service": False,
             "profile.password_manager_enabled": False,
             "profile.password_manager_leak_detection": False,
         })
         driver_path = _find_driver("chromedriver", "chrome")
-        service = ChromeService(driver_path) if driver_path else ChromeService()
+        service = ChromeService(driver_path, log_output=os.devnull) if driver_path else ChromeService(log_output=os.devnull)
         driver = webdriver.Chrome(service=service, options=options)
 
     driver.implicitly_wait(1)
