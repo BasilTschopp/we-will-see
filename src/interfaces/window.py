@@ -8,10 +8,9 @@ from interfaces.view.testing   import ViewTesting
 from interfaces.view.recording import ViewRecording
 from interfaces.view.results   import ViewResults
 from interfaces.view.settings  import ViewSettings
-from interfaces.view.dashboard import ViewDashboard
 
 
-class App(ViewDashboard, ViewTesting, ViewRecording, ViewResults, ViewSettings):
+class App(ViewTesting, ViewRecording, ViewResults, ViewSettings):
 
     def __init__(self):
         self.root = tk.Tk()
@@ -27,7 +26,7 @@ class App(ViewDashboard, ViewTesting, ViewRecording, ViewResults, ViewSettings):
         self.recorder = None
         self.results: list[NavigationResult] = []
 
-        self._current_section = "dashboard"
+        self._current_section = "results"
         self._current_tc_name = ""
         self._nav_buttons: dict[str, tk.Label] = {}
 
@@ -35,7 +34,7 @@ class App(ViewDashboard, ViewTesting, ViewRecording, ViewResults, ViewSettings):
         setup_logging()
         color_titlebar(self.root)
         self._build_ui()
-        self._show_section("dashboard")
+        self._show_section("results")
 
     def _build_ui(self):
         self.root.columnconfigure(0, weight=0)
@@ -48,9 +47,8 @@ class App(ViewDashboard, ViewTesting, ViewRecording, ViewResults, ViewSettings):
         self.nav_frame.grid_propagate(False)
         tk.Frame(self.nav_frame, bg=NAV_BG, height=12).pack()
 
-        for key, label in [("dashboard", "Dashboard"),
+        for key, label in [("record",   "Recording"),
                             ("testing",  "Testing"),
-                            ("record",   "Recording"),
                             ("results",  "Results"),
                             ("settings", "Settings")]:
             btn = tk.Label(
@@ -77,8 +75,6 @@ class App(ViewDashboard, ViewTesting, ViewRecording, ViewResults, ViewSettings):
         self.paned.add(self.content_frame, minsize=300)
 
         # Build all views
-        ViewDashboard.build_sub(self, self.sub_container)
-        ViewDashboard.build_content(self, self.content_frame)
         ViewTesting.build_sub(self, self.sub_container)
         ViewRecording.build_sub(self, self.sub_container)
         ViewResults.build_sub(self, self.sub_container)
@@ -103,11 +99,7 @@ class App(ViewDashboard, ViewTesting, ViewRecording, ViewResults, ViewSettings):
         for w in self.content_frame.winfo_children():
             w.pack_forget()
 
-        if section == "dashboard":
-            self.sub_dashboard.pack(fill=tk.BOTH, expand=True)
-            self.content_dashboard.pack(fill=tk.BOTH, expand=True)
-            self._refresh_dashboard()
-        elif section == "testing":
+        if section == "testing":
             self.sub_testing.pack(fill=tk.BOTH, expand=True)
             self.content_testing.pack(fill=tk.BOTH, expand=True)
             self._refresh_tc_list()

@@ -1080,7 +1080,7 @@ class NavigationTester:
                     By.TAG_NAME, "body").text or ""
 
             load_ms = int((time.time() - start) * 1000)
-            if search in body_text:
+            if search.lower() in body_text.lower():
                 self._record(item, status="OK",
                              title=f"Text found: '{search[:40]}'",
                              load_ms=load_ms)
@@ -1120,9 +1120,9 @@ class NavigationTester:
                     By.TAG_NAME, "body").text or ""
 
             load_ms = int((time.time() - start) * 1000)
-            if search in body_text:
+            if search.lower() in body_text.lower():
                 self._record(item, status="ERROR",
-                             error=f"Unerwarteter Text gefunden: '{search[:60]}'",
+                             error=f"'{search[:60]}'",
                              load_ms=load_ms)
                 log.warning(f"  ERROR ({load_ms}ms) — Unerwarteter Text gefunden")
             else:

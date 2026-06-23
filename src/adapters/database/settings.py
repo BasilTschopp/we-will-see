@@ -54,3 +54,19 @@ def get_release_selector() -> str:
 
 def set_release_selector(selector: str) -> None:
     set_setting("release_selector", selector)
+
+
+def get_report_errors_only() -> bool:
+    return get_setting("report_errors_only", "0") == "1"
+
+
+def set_report_errors_only(value: bool) -> None:
+    set_setting("report_errors_only", "1" if value else "0")
+
+
+def get_report_include_screenshots() -> bool:
+    return get_setting("report_include_screenshots", "1") == "1"
+
+
+def set_report_include_screenshots(value: bool) -> None:
+    set_setting("report_include_screenshots", "1" if value else "0")

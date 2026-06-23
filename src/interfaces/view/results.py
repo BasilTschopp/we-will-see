@@ -40,6 +40,9 @@ class ViewResults:
             activeforeground=SUB_SEL_FG, borderwidth=0,
             font=(FONT, 10))
         self._results_context_menu.add_command(
+            label="Generate Report", command=self._on_generate_report)
+        self._results_context_menu.add_separator()
+        self._results_context_menu.add_command(
             label="Delete", command=self._on_delete_result)
 
         bar = tk.Frame(self.sub_results, bg=SUB_BG)
@@ -153,6 +156,80 @@ class ViewResults:
         from adapters.database.testresults import fetch_results
         self._load_results_into_tree(fetch_results(name))
 
+    def _on_generate_report(self):
+        sel = self.results_listbox.curselection()
+        if not sel:
+            messagebox.showinfo("", "Please select one or more results.")
+            return
+        names = [self.results_listbox.get(i) for i in sel]
+        try:
+            from usecases.report_generator import generate_report
+            path = generate_report(names)
+        except Exception as e:
+            messagebox.showerror("Report Error", str(e))
+            return
+        self._show_report_popup(path)
+
+    def _show_report_popup(self, path: str):
+        from interfaces.style.style import BG2, BORDER, ACCENT
+        popup = tk.Toplevel(self.root)
+        popup.withdraw()
+        popup.overrideredirect(True)
+        popup.configure(bg=BORDER)
+        popup.transient(self.root)
+
+        inner = tk.Frame(popup, bg=BG)
+        inner.pack(fill=tk.BOTH, expand=True, padx=1, pady=1)
+
+        header = tk.Label(inner, text="Report created", bg=ACCENT, fg="#ffffff",
+                          font=(FONT, 10, "bold"), anchor="w", padx=14, pady=10,
+                          cursor="fleur")
+        header.pack(fill=tk.X)
+
+        def _start_drag(e):
+            popup._drag_x = e.x_root - popup.winfo_x()
+            popup._drag_y = e.y_root - popup.winfo_y()
+        def _drag(e):
+            popup.geometry(f"+{e.x_root - popup._drag_x}+{e.y_root - popup._drag_y}")
+        header.bind("<ButtonPress-1>", _start_drag)
+        header.bind("<B1-Motion>",     _drag)
+
+        body = tk.Frame(inner, bg=BG)
+        body.pack(fill=tk.X, padx=14, pady=(10, 4))
+
+        filename = os.path.basename(path)
+        tk.Label(body, text=filename, bg=BG, fg=FG,
+                 font=(FONT, 9), wraplength=320, justify="left").pack(anchor="w")
+
+        import threading
+
+        def _open_file():
+            popup.destroy()
+            threading.Thread(target=lambda: os.startfile(path), daemon=True).start()
+
+        open_lbl = tk.Label(body, text="Open file", bg=BG, fg=ACCENT,
+                            font=(FONT, 9, "underline"), cursor="hand2")
+        open_lbl.pack(anchor="w", pady=(4, 0))
+        open_lbl.bind("<Button-1>", lambda _: _open_file())
+
+        tk.Frame(inner, bg=BORDER, height=1).pack(fill=tk.X, pady=(10, 0))
+
+        btn_row = tk.Frame(inner, bg=BG)
+        btn_row.pack(fill=tk.X, padx=14, pady=10)
+        close_lbl = tk.Label(btn_row, text="Close", bg=BG, fg=FG,
+                             font=(FONT, 9), cursor="hand2")
+        close_lbl.pack(side=tk.RIGHT)
+        close_lbl.bind("<Button-1>", lambda _: popup.destroy())
+
+        popup.update_idletasks()
+        pw = popup.winfo_reqwidth()
+        ph = popup.winfo_reqheight()
+        x  = self.root.winfo_rootx() + (self.root.winfo_width()  - pw) // 2
+        y  = self.root.winfo_rooty() + (self.root.winfo_height() - ph) // 2
+        popup.geometry(f"{pw}x{ph}+{x}+{y}")
+        popup.deiconify()
+        popup.lift()
+
     def _on_delete_result(self):
         sel = self.results_listbox.curselection()
         if not sel:
@@ -241,7 +318,10 @@ class ViewResults:
             lbl.destroy()
         self._img_labels.clear()
         for iid, (path, row_bg) in self._screenshot_paths.items():
-            bbox = self.csv_tree.bbox(iid, "img")
+            try:
+                bbox = self.csv_tree.bbox(iid, "img")
+            except Exception:
+                continue
             if not bbox:
                 continue
             bx, by, bw, bh = bbox
