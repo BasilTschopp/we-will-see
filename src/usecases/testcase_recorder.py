@@ -64,7 +64,7 @@ _RECORDER_JS = r"""
     }
 
     function textOf(el) {
-        return (el.innerText || el.textContent || el.value || el.getAttribute('aria-label') || '').trim().substring(0,80);
+        return (el.innerText || el.textContent || el.value || el.getAttribute('aria-label') || '').trim().replace(/\s+/g, ' ').substring(0,80);
     }
 
     function pushEvent(obj) {
@@ -91,7 +91,7 @@ _RECORDER_JS = r"""
 
     document.addEventListener('mouseup', function (e) {
         var sel = window.getSelection();
-        var text = sel ? sel.toString().trim() : '';
+        var text = sel ? sel.toString().trim().replace(/\s+/g, ' ') : '';
         if (!text || text.length < 3) return;
         var el = (sel.anchorNode && sel.anchorNode.parentElement) ? sel.anchorNode.parentElement : e.target;
         pushEvent({ type: 'assert_text', text: text.substring(0, 200), selector: bestSelector(el) });
