@@ -6,6 +6,7 @@
 
 #data folder
 data/
+!data/readme/**
 
 # python compiled files
 __pycache__/
