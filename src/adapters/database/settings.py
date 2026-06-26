@@ -56,6 +56,24 @@ def set_release_selector(selector: str) -> None:
     set_setting("release_selector", selector)
 
 
+_DEFAULT_ERROR_PAGE_KEYWORDS = [
+    "404", "not found", "500", "403", "forbidden",
+    "fehler", "nicht gefunden", "wartungsarbeiten",
+    "nicht erreichbar", "refused", "err_connection",
+]
+
+
+def get_error_page_keywords() -> list[str]:
+    raw = get_setting("error_page_keywords", "")
+    if not raw:
+        return list(_DEFAULT_ERROR_PAGE_KEYWORDS)
+    return [k.strip() for k in raw.split("\n") if k.strip()]
+
+
+def set_error_page_keywords(keywords: list[str]) -> None:
+    set_setting("error_page_keywords", "\n".join(keywords))
+
+
 def get_report_errors_only() -> bool:
     return get_setting("report_errors_only", "0") == "1"
 

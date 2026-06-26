@@ -1531,10 +1531,9 @@ class NavigationTester:
             if self.driver.current_url.startswith("chrome-error://"):
                 return "Browser error page (chrome-error)"
             title = (self.driver.title or "").lower()
-            for err in ["404", "not found", "500", "403", "forbidden",
-                        "fehler", "nicht gefunden",
-                        "nicht erreichbar", "refused", "err_connection"]:
-                if err in title:
+            from adapters.database.settings import get_error_page_keywords
+            for err in get_error_page_keywords():
+                if err.lower() in title:
                     return f"Title contains '{err}'"
         except Exception:
             pass

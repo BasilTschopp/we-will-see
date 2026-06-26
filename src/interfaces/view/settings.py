@@ -7,28 +7,16 @@ from interfaces.style.style import BG, BG2, FG, FG_SEC, ACCENT, BORDER, FONT, RE
 from interfaces.helper.widgets import add_tooltip
 
 
-_NAV_ITEMS = ["Backup", "E-Mail Alerts", "Report", "Presets", "Release"]
-
-
 class ViewSettings:
 
     def build_sub(self, parent: tk.Frame):
-        from interfaces.style.style import SUB_BG, SUB_SEL_BG, SUB_SEL_FG
+        from interfaces.style.style import SUB_BG
         self.sub_settings = tk.Frame(parent, bg=SUB_BG)
-
-        self._settings_nav = tk.Listbox(
-            self.sub_settings, bg=SUB_BG, fg=FG,
-            selectbackground=SUB_SEL_BG, selectforeground=SUB_SEL_FG,
-            font=(FONT, 11), borderwidth=0, highlightthickness=0,
-            activestyle="none", relief="flat", exportselection=False)
-        self._settings_nav.pack(fill=tk.BOTH, expand=True, padx=(10, 4), pady=4)
-        for item in _NAV_ITEMS:
-            self._settings_nav.insert(tk.END, item)
-        self._settings_nav.bind("<<ListboxSelect>>", self._on_settings_nav_select)
 
     def build_content(self, parent: tk.Frame):
         self.content_settings = tk.Frame(parent, bg=BG)
 
+        self._settings_main_home_frame    = self._build_main_home_panel(self.content_settings)
         self._settings_backup_frame       = self._build_backup_panel(self.content_settings)
         self._settings_presets_home_frame = self._build_presets_home_panel(self.content_settings)
         self._settings_categories_frame   = self._build_categories_panel(self.content_settings)
@@ -36,6 +24,65 @@ class ViewSettings:
         self._settings_email_frame        = self._build_email_panel(self.content_settings)
         self._settings_release_frame      = self._build_release_panel(self.content_settings)
         self._settings_report_frame       = self._build_report_panel(self.content_settings)
+        self._settings_testing_frame      = self._build_testing_panel(self.content_settings)
+
+    # ------------------------------------------------------------------
+    # Main home panel (all settings cards, alphabetically)
+    # ------------------------------------------------------------------
+
+    def _build_main_home_panel(self, parent: tk.Frame) -> tk.Frame:
+        frame = tk.Frame(parent, bg=BG)
+
+        canvas = tk.Canvas(frame, bg=BG, highlightthickness=0, borderwidth=0)
+        scrollbar = tk.Scrollbar(frame, orient=tk.VERTICAL, command=canvas.yview)
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        inner = tk.Frame(canvas, bg=BG)
+        canvas_window = canvas.create_window((0, 0), window=inner, anchor="nw")
+
+        def _on_inner_configure(_=None):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+
+        def _on_canvas_configure(event):
+            canvas.itemconfig(canvas_window, width=event.width)
+
+        inner.bind("<Configure>", _on_inner_configure)
+        canvas.bind("<Configure>", _on_canvas_configure)
+        canvas.bind("<MouseWheel>", lambda e: canvas.yview_scroll(-1 * (e.delta // 120), "units"))
+
+        pad = tk.Frame(inner, bg=BG)
+        pad.pack(fill=tk.BOTH, expand=True, padx=24, pady=24)
+
+        tk.Label(pad, text="Settings", bg=BG, fg=FG,
+                 font=(FONT, 13, "bold"), anchor="w").pack(anchor="w", pady=(0, 4))
+        tk.Frame(pad, bg=BORDER, height=1).pack(fill=tk.X, pady=(0, 20))
+
+        def _card(title, desc, command):
+            card = tk.Frame(pad, bg=BG2, cursor="hand2",
+                            highlightthickness=1, highlightbackground=BORDER)
+            card.pack(fill=tk.X, pady=(0, 10))
+            card_inner = tk.Frame(card, bg=BG2)
+            card_inner.pack(fill=tk.X, padx=16, pady=12)
+            tk.Label(card_inner, text=title, bg=BG2, fg=FG,
+                     font=(FONT, 11, "bold"), anchor="w").pack(anchor="w")
+            tk.Label(card_inner, text=desc, bg=BG2, fg=FG_SEC,
+                     font=(FONT, 10), anchor="w").pack(anchor="w", pady=(2, 0))
+            for w in [card, card_inner] + list(card_inner.winfo_children()):
+                w.bind("<Button-1>", lambda _, cmd=command: cmd())
+                w.bind("<MouseWheel>", lambda e: canvas.yview_scroll(-1 * (e.delta // 120), "units"))
+
+        _card("Backup",               "Save or restore the database.",                              self._show_settings_backup)
+        _card("Categories",           "Manage categories for assigning testcases.",                 self._show_settings_categories)
+        _card("E-Mail Alerts",        "SMTP settings for automated test failure alerts.",           self._show_settings_email_panel)
+        _card("Error Page Detection", "Keywords checked in the page title to detect error pages.",  self._show_settings_error_page_detection)
+        _card("Release Detection",    "CSS selector and regex for the release number.",              self._show_settings_release)
+        _card("Report",               "Configure content and screenshots for generated reports.",    self._show_settings_report_panel)
+        _card("URL Presets",          "Saved URLs with login credentials.",                         self._show_settings_url_presets)
+
+        return frame
 
     # ------------------------------------------------------------------
     # Backup panel
@@ -692,32 +739,128 @@ class ViewSettings:
             "errors_only" if get_report_errors_only() else "all")
         self._report_screenshots_var.set(get_report_include_screenshots())
 
-    def _hide_all_settings_panels(self):
-        for f in (self._settings_backup_frame, self._settings_presets_home_frame,
-                  self._settings_categories_frame, self._settings_url_presets_frame,
-                  self._settings_email_frame, self._settings_release_frame,
-                  self._settings_report_frame):
-            f.pack_forget()
+    # ------------------------------------------------------------------
+    # Testing panel
+    # ------------------------------------------------------------------
 
-    def _on_settings_nav_select(self, _=None):
-        sel = self._settings_nav.curselection()
+    def _build_testing_panel(self, parent: tk.Frame) -> tk.Frame:
+        from interfaces.style.style import SUB_SEL_BG, SUB_SEL_FG
+        frame = tk.Frame(parent, bg=BG)
+        inner = tk.Frame(frame, bg=BG)
+        inner.pack(fill=tk.BOTH, expand=True, padx=24, pady=24)
+
+        tk.Label(inner, text="Error Page Detection", bg=BG, fg=FG,
+                 font=(FONT, 13, "bold"), anchor="w").pack(anchor="w", pady=(0, 4))
+        tk.Frame(inner, bg=BORDER, height=1).pack(fill=tk.X, pady=(0, 10))
+
+        tk.Label(inner,
+                 text="Keywords checked in the page title to detect error/maintenance pages.",
+                 bg=BG, fg=FG_SEC, font=(FONT, 10), anchor="w",
+                 wraplength=480, justify="left").pack(anchor="w", pady=(0, 8))
+
+        list_frame = tk.Frame(inner, bg=BG)
+        list_frame.pack(fill=tk.BOTH, expand=True)
+
+        self._error_kw_listbox = tk.Listbox(
+            list_frame, bg=BG2, fg=FG,
+            selectbackground=SUB_SEL_BG, selectforeground=SUB_SEL_FG,
+            font=(FONT, 11), borderwidth=0, highlightthickness=1,
+            highlightbackground=BORDER,
+            activestyle="none", relief="flat", exportselection=False)
+        self._error_kw_listbox.pack(fill=tk.BOTH, expand=True)
+
+        bar = tk.Frame(inner, bg=BG)
+        bar.pack(fill=tk.X, pady=(6, 0))
+
+        add_lbl = tk.Label(bar, text="+", bg=BG, fg=FG,
+                           font=(FONT, 14, "bold"), cursor="hand2")
+        add_lbl.pack(side=tk.LEFT, padx=(0, 6))
+        add_lbl.bind("<Button-1>", lambda _: self._on_error_kw_add())
+        add_tooltip(add_lbl, "Add keyword")
+
+        del_lbl = tk.Label(bar, text="−", bg=BG, fg=FG,
+                           font=(FONT, 14, "bold"), cursor="hand2")
+        del_lbl.pack(side=tk.LEFT, padx=(0, 16))
+        del_lbl.bind("<Button-1>", lambda _: self._on_error_kw_delete())
+        add_tooltip(del_lbl, "Delete selected")
+
+        reset_lbl = tk.Label(bar, text="Reset to default", bg=BG2, fg=FG,
+                             font=(FONT, 10), cursor="hand2", padx=10, pady=4,
+                             relief="flat", highlightthickness=1, highlightbackground=BORDER)
+        reset_lbl.pack(side=tk.LEFT)
+        reset_lbl.bind("<Button-1>", lambda _: self._on_error_kw_reset())
+
+        return frame
+
+    def _refresh_testing_panel(self):
+        from adapters.database.settings import get_error_page_keywords
+        self._error_kw_listbox.delete(0, tk.END)
+        for kw in get_error_page_keywords():
+            self._error_kw_listbox.insert(tk.END, kw)
+
+    def _on_error_kw_add(self):
+        from tkinter import simpledialog
+        kw = simpledialog.askstring("Add keyword", "Keyword (case-insensitive):", parent=self.root)
+        if not kw or not kw.strip():
+            return
+        kw = kw.strip().lower()
+        from adapters.database.settings import get_error_page_keywords, set_error_page_keywords
+        kws = get_error_page_keywords()
+        if kw in [k.lower() for k in kws]:
+            return
+        kws.append(kw)
+        set_error_page_keywords(kws)
+        self._refresh_testing_panel()
+
+    def _on_error_kw_delete(self):
+        sel = self._error_kw_listbox.curselection()
         if not sel:
             return
-        item = _NAV_ITEMS[sel[0]]
+        kw = self._error_kw_listbox.get(sel[0])
+        from adapters.database.settings import get_error_page_keywords, set_error_page_keywords
+        set_error_page_keywords([k for k in get_error_page_keywords() if k != kw])
+        self._refresh_testing_panel()
+
+    def _on_error_kw_reset(self):
+        from adapters.database.settings import _DEFAULT_ERROR_PAGE_KEYWORDS, set_error_page_keywords
+        set_error_page_keywords(list(_DEFAULT_ERROR_PAGE_KEYWORDS))
+        self._refresh_testing_panel()
+
+    def _hide_all_settings_panels(self):
+        for f in (self._settings_main_home_frame,
+                  self._settings_backup_frame, self._settings_presets_home_frame,
+                  self._settings_categories_frame, self._settings_url_presets_frame,
+                  self._settings_email_frame, self._settings_release_frame,
+                  self._settings_report_frame, self._settings_testing_frame):
+            f.pack_forget()
+
+    def _show_settings_backup(self):
         self._hide_all_settings_panels()
-        if item == "Backup":
-            self._settings_backup_frame.pack(fill=tk.BOTH, expand=True)
-        elif item == "Presets":
-            self._settings_presets_home_frame.pack(fill=tk.BOTH, expand=True)
-        elif item == "E-Mail Alerts":
-            self._refresh_email_panel()
-            self._settings_email_frame.pack(fill=tk.BOTH, expand=True)
-        elif item == "Release":
-            self._refresh_release_panel()
-            self._settings_release_frame.pack(fill=tk.BOTH, expand=True)
-        elif item == "Report":
-            self._refresh_report_panel()
-            self._settings_report_frame.pack(fill=tk.BOTH, expand=True)
+        self._settings_backup_frame.pack(fill=tk.BOTH, expand=True)
+
+    def _show_settings_release(self):
+        self._hide_all_settings_panels()
+        self._refresh_release_panel()
+        self._settings_release_frame.pack(fill=tk.BOTH, expand=True)
+
+    def _show_settings_email_panel(self):
+        self._hide_all_settings_panels()
+        self._refresh_email_panel()
+        self._settings_email_frame.pack(fill=tk.BOTH, expand=True)
+
+    def _show_settings_report_panel(self):
+        self._hide_all_settings_panels()
+        self._refresh_report_panel()
+        self._settings_report_frame.pack(fill=tk.BOTH, expand=True)
+
+    def _show_settings_error_page_detection(self):
+        self._hide_all_settings_panels()
+        self._refresh_testing_panel()
+        self._settings_testing_frame.pack(fill=tk.BOTH, expand=True)
+
+    def _show_settings_presets_home(self):
+        self._hide_all_settings_panels()
+        self._settings_presets_home_frame.pack(fill=tk.BOTH, expand=True)
 
     def _show_settings_categories(self):
         self._hide_all_settings_panels()
@@ -730,6 +873,5 @@ class ViewSettings:
         self._settings_url_presets_frame.pack(fill=tk.BOTH, expand=True)
 
     def _settings_show_first(self):
-        self._settings_nav.selection_clear(0, tk.END)
-        self._settings_nav.selection_set(0)
-        self._on_settings_nav_select()
+        self._hide_all_settings_panels()
+        self._settings_main_home_frame.pack(fill=tk.BOTH, expand=True)

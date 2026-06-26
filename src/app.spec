@@ -5,8 +5,7 @@ a = Analysis(
     pathex=["."],
     binaries=[],
     datas=[
-        ("interfaces/style.yaml", "interfaces"),
-        (".env.example",           "."),
+        ("interfaces/style/style.yaml", "interfaces/style"),
     ],
     hiddenimports=[
         "dotenv",

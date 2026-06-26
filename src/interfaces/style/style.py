@@ -53,6 +53,13 @@ def apply_theme():
     s.theme_use("clam")
     s.configure(".", background=BG, foreground=FG, font=(FONT, 10))
     s.configure("TFrame", background=BG)
+    s.configure("TCombobox", fieldbackground=BG2, background=BG2,
+                foreground=FG, selectbackground=BG2, selectforeground=FG,
+                arrowcolor=FG, borderwidth=0, padding=(6, 4))
+    s.map("TCombobox",
+          fieldbackground=[("readonly", BG2)],
+          selectbackground=[("readonly", BG2)],
+          selectforeground=[("readonly", FG)])
     s.configure("TEntry", fieldbackground=BG2, foreground=FG,
                 borderwidth=0, padding=(10, 7), font=(MONO, 10),
                 insertcolor=ACCENT)

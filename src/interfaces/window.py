@@ -14,6 +14,8 @@ class App(ViewTesting, ViewRecording, ViewResults, ViewSettings):
 
     def __init__(self):
         self.root = tk.Tk()
+        from main import APP_VERSION
+        self._app_version = APP_VERSION
         self.root.title("We Will See")
         self.root.geometry("960x640")
         self.root.minsize(760, 480)
@@ -59,6 +61,9 @@ class App(ViewTesting, ViewRecording, ViewResults, ViewSettings):
             btn.bind("<Button-1>", lambda _, k=key: self._show_section(k))
             self._nav_buttons[key] = btn
 
+        tk.Label(self.nav_frame, text=self._app_version, bg=NAV_BG, fg=NAV_FG,
+                 font=(FONT, 9), anchor="w", padx=16).pack(side=tk.BOTTOM, pady=(0, 10))
+
         # Paned layout
         self.paned = tk.PanedWindow(
             self.root, orient=tk.HORIZONTAL, bg=BORDER,
@@ -88,6 +93,7 @@ class App(ViewTesting, ViewRecording, ViewResults, ViewSettings):
         if self._current_section == "testing":
             self._on_editor_focusout()
 
+        prev_section = self._current_section
         self._current_section = section
 
         for key, btn in self._nav_buttons.items():
@@ -115,6 +121,17 @@ class App(ViewTesting, ViewRecording, ViewResults, ViewSettings):
             self.sub_settings.pack(fill=tk.BOTH, expand=True)
             self.content_settings.pack(fill=tk.BOTH, expand=True)
             self._settings_show_first()
+
+        if section == "settings" and prev_section != "settings":
+            try:
+                self._sub_sash_x = self.paned.sash_coord(0)[0]
+            except Exception:
+                self._sub_sash_x = 210
+            self.paned.forget(self.sub_frame)
+        elif section != "settings" and prev_section == "settings":
+            self.paned.forget(self.content_frame)
+            self.paned.add(self.sub_frame, minsize=140, width=getattr(self, "_sub_sash_x", 210))
+            self.paned.add(self.content_frame, minsize=300)
 
     def run(self):
         self.root.mainloop()
