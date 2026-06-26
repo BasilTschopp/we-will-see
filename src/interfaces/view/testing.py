@@ -140,7 +140,6 @@ class ViewTesting:
         self._screenshot_on_error_var = tk.BooleanVar()
         self._tc_run_timeout    = 0
         self._tc_step_timeout   = 0
-        self._tc_parallel       = False
         self._tc_stop_on_error  = False
 
         self._settings_btn = tk.Label(footer, text="🔧", bg=BG, fg=FG,
@@ -368,7 +367,7 @@ class ViewTesting:
         from adapters.database.testcases import (
             fetch_testcase_yaml, fetch_automated,
             fetch_screenshot_on_error, fetch_run_timeout, fetch_step_timeout,
-            fetch_parallel, fetch_stop_on_error,
+            fetch_stop_on_error,
         )
         yaml_text, _ = fetch_testcase_yaml(name)
         self.editor.delete("1.0", tk.END)
@@ -380,7 +379,6 @@ class ViewTesting:
         self._screenshot_on_error_var.set(fetch_screenshot_on_error(name))
         self._tc_run_timeout   = fetch_run_timeout(name)
         self._tc_step_timeout  = fetch_step_timeout(name)
-        self._tc_parallel      = fetch_parallel(name)
         self._tc_stop_on_error = fetch_stop_on_error(name)
         self._refresh_settings_icon()
 
@@ -418,18 +416,16 @@ class ViewTesting:
 
         auto_var          = tk.BooleanVar(value=self._automated_var.get())
         sce_var           = tk.BooleanVar(value=self._screenshot_on_error_var.get())
-        parallel_var      = tk.BooleanVar(value=self._tc_parallel)
         stop_on_error_var = tk.BooleanVar(value=self._tc_stop_on_error)
 
         def _save_to_db():
             from adapters.database.testcases import (
                 update_automated, update_screenshot_on_error,
-                update_run_timeout, update_step_timeout, update_parallel,
+                update_run_timeout, update_step_timeout,
                 update_stop_on_error,
             )
             update_automated(tc_name, auto_var.get())
             update_screenshot_on_error(tc_name, sce_var.get())
-            update_parallel(tc_name, parallel_var.get())
             update_stop_on_error(tc_name, stop_on_error_var.get())
             try:
                 rt = max(0, int(run_timeout_entry.get().strip() or "0"))
@@ -445,7 +441,6 @@ class ViewTesting:
             self._screenshot_on_error_var.set(sce_var.get())
             self._tc_run_timeout   = rt
             self._tc_step_timeout  = st
-            self._tc_parallel      = parallel_var.get()
             self._tc_stop_on_error = stop_on_error_var.get()
             self._refresh_settings_icon()
 
@@ -458,13 +453,6 @@ class ViewTesting:
 
         tk.Checkbutton(
             body, text="Screenshot on Error", variable=sce_var,
-            bg=BG, fg=FG, selectcolor=BG,
-            activebackground=BG, activeforeground=ACCENT,
-            font=(FONT, 9), command=_save_to_db,
-        ).pack(anchor="w", pady=(4, 0))
-
-        tk.Checkbutton(
-            body, text="Parallel matrix execution", variable=parallel_var,
             bg=BG, fg=FG, selectcolor=BG,
             activebackground=BG, activeforeground=ACCENT,
             font=(FONT, 9), command=_save_to_db,

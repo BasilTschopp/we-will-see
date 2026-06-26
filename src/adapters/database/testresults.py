@@ -4,7 +4,7 @@ from core.core import NavigationResult, log
 
 
 def save_results(run_name: str, results: list[NavigationResult],
-                 release: str = "") -> None:
+                 release: str = "", username: str = "") -> None:
     from adapters.database.connection import get_connection
     conn = get_connection()
     for r in results:
@@ -12,12 +12,13 @@ def save_results(run_name: str, results: list[NavigationResult],
             INSERT INTO testresults
                 (run_name, release, status, error_detail, url, page_title,
                  method, description, element_text, source_url,
-                 http_status, load_time_ms, depth, screenshot_path, timestamp)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                 http_status, load_time_ms, depth, screenshot_path, username, timestamp)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (
             run_name, release, r.status, r.error_detail, r.url, r.page_title,
             r.method, r.description, r.element_text, r.source_url,
             r.http_status, r.load_time_ms, r.depth, r.screenshot_path,
+            username,
             r.timestamp or datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         ))
     conn.commit()
@@ -109,6 +110,15 @@ def fetch_release(run_name: str) -> str:
         "SELECT release FROM testresults WHERE run_name = ? LIMIT 1", (run_name,)
     ).fetchone()
     return (row["release"] or "") if row else ""
+
+
+def fetch_username(run_name: str) -> str:
+    from adapters.database.connection import get_connection
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT username FROM testresults WHERE run_name = ? LIMIT 1", (run_name,)
+    ).fetchone()
+    return (row["username"] or "") if row else ""
 
 
 def delete_run(run_name: str) -> None:

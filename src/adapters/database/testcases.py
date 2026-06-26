@@ -103,23 +103,6 @@ def update_step_timeout(name: str, seconds: int) -> None:
     conn.commit()
 
 
-def fetch_parallel(name: str) -> bool:
-    conn = get_connection()
-    row = conn.execute(
-        "SELECT parallel FROM testcases WHERE name = ?", (name,)
-    ).fetchone()
-    return bool(row["parallel"]) if row else False
-
-
-def update_parallel(name: str, value: bool) -> None:
-    conn = get_connection()
-    conn.execute(
-        "UPDATE testcases SET parallel = ? WHERE name = ?",
-        (1 if value else 0, name)
-    )
-    conn.commit()
-
-
 def fetch_stop_on_error(name: str) -> bool:
     conn = get_connection()
     row = conn.execute(

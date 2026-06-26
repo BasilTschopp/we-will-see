@@ -18,7 +18,6 @@ def create_tables():
             screenshot_on_error INTEGER NOT NULL DEFAULT 0,
             run_timeout         INTEGER NOT NULL DEFAULT 0,
             step_timeout        INTEGER NOT NULL DEFAULT 0,
-            parallel            INTEGER NOT NULL DEFAULT 0,
             stop_on_error       INTEGER NOT NULL DEFAULT 0,
             created_at          TEXT    NOT NULL DEFAULT (datetime('now')),
             updated_at          TEXT    NOT NULL DEFAULT (datetime('now'))
@@ -48,6 +47,7 @@ def create_tables():
             load_time_ms    INTEGER NOT NULL DEFAULT 0,
             depth           INTEGER NOT NULL DEFAULT 0,
             screenshot_path TEXT    NOT NULL DEFAULT '',
+            username        TEXT    NOT NULL DEFAULT '',
             timestamp       TEXT    NOT NULL DEFAULT (datetime('now'))
         );
     """)
@@ -87,10 +87,16 @@ def create_tables():
         conn.commit()
     except Exception:
         pass
-    # migration: add run_timeout, step_timeout and parallel columns to testcases
+    # migration: add username column to testresults
+    try:
+        conn.execute(
+            "ALTER TABLE testresults ADD COLUMN username TEXT NOT NULL DEFAULT ''")
+        conn.commit()
+    except Exception:
+        pass
+    # migration: add run_timeout, step_timeout and stop_on_error columns to testcases
     for col in ("run_timeout INTEGER NOT NULL DEFAULT 0",
                 "step_timeout INTEGER NOT NULL DEFAULT 0",
-                "parallel INTEGER NOT NULL DEFAULT 0",
                 "stop_on_error INTEGER NOT NULL DEFAULT 0"):
         try:
             conn.execute(f"ALTER TABLE testcases ADD COLUMN {col}")

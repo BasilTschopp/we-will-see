@@ -107,7 +107,10 @@ def _read_release_from_page(driver) -> str:
 from usecases.value_resolver import resolve_input_value
 from selenium.webdriver.common.by import By
 
-_PROJECT_ROOT    = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import sys as _sys
+_PROJECT_ROOT    = (os.path.dirname(os.path.abspath(_sys.executable))
+                    if getattr(_sys, "frozen", False)
+                    else os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 _FILES_DIR       = os.path.join(_PROJECT_ROOT, "data", "testfiles")
 _SCREENSHOTS_DIR = os.path.join(_PROJECT_ROOT, "data", "screenshots")
 
@@ -171,70 +174,7 @@ def _expand_matrix(matrix: dict) -> list[tuple[dict, str]]:
 
 
 def run_test(app, tc_names: list[str], headless: bool = True):
-    if len(tc_names) == 1:
-        _run_sequential(app, tc_names, headless)
-    else:
-        _run_parallel(app, tc_names, headless)
-
-
-def _run_matrix_iter_worker(app, tc_names, all_items, meta, iter_vars, iter_label,
-                             ts, headless, screenshot_on_error, step_timeout, stop_on_error):
-    import copy
-    from adapters.browser.driver import start_browser, quit_browser
-    from adapters.browser.login import login
-    from adapters.database.testresults import save_results
-
-    driver = None
-    try:
-        url          = meta.get("url", "")
-        browser_name = (meta.get("browser") or "chrome").strip().lower()
-        username     = str(meta.get("username", "")).strip()
-        password     = str(meta.get("password", "")).strip()
-        private      = bool(meta.get("private", False))
-
-        if browser_name not in ("chrome", "edge", "firefox"):
-            browser_name = "chrome"
-
-        driver = start_browser(headless=headless, browser=browser_name, private=private)
-        app.drivers.append(driver)
-
-        login(driver, url, username, password)
-        dismiss_cookie_banner(driver)
-
-        release     = _read_release_from_page(driver)
-        base_name   = f"{ts} - {', '.join(tc_names)}"
-        result_name = base_name + (f" [{iter_label}]" if iter_label else "")
-
-        results = NavigationTester(driver=driver, items=copy.deepcopy(all_items),
-                                   screenshot_on_error=screenshot_on_error,
-                                   screenshot_dir=_SCREENSHOTS_DIR,
-                                   vars_context=iter_vars,
-                                   step_timeout=step_timeout,
-                                   stop_check=lambda: not app.running,
-                                   stop_on_error=stop_on_error).test_all()
-        save_results(result_name, results, release)
-        app.root.after(0, app._refresh_results_list)
-
-        ok  = sum(1 for r in results if r.status == "OK")
-        err = sum(1 for r in results if r.status == "ERROR")
-        log.info(f"Done [{result_name}] — {ok} OK, {err} errors")
-
-        if err:
-            from adapters.notification.email_notifier import send_failure_alert
-            try:
-                send_failure_alert(result_name, results)
-            except Exception as mail_exc:
-                log.error(f"Email alert failed [{iter_label}]: {mail_exc}")
-
-    except Exception as e:
-        log.error(f"Matrix worker error [{iter_label}]: {e}")
-    finally:
-        if driver is not None:
-            try:
-                app.drivers.remove(driver)
-            except ValueError:
-                pass
-            quit_browser(driver)
+    _run_sequential(app, tc_names, headless)
 
 
 def _run_sequential(app, tc_names: list[str], headless: bool):
@@ -254,7 +194,6 @@ def _run_sequential(app, tc_names: list[str], headless: bool):
         screenshot_on_error = False
         run_timeout    = 0
         step_timeout   = 0
-        parallel_db    = False
         stop_on_error  = False
         merged_matrix: dict = {}
         merged_meta: dict = {}
@@ -273,15 +212,12 @@ def _run_sequential(app, tc_names: list[str], headless: bool):
                 fetch_screenshot_on_error as _fetch_sce,
                 fetch_run_timeout as _fetch_rt,
                 fetch_step_timeout as _fetch_st,
-                fetch_parallel as _fetch_par,
                 fetch_stop_on_error as _fetch_soe,
             )
             if _fetch_sce(name):
                 screenshot_on_error = True
             run_timeout  = max(run_timeout,  _fetch_rt(name))
             step_timeout = max(step_timeout, _fetch_st(name))
-            if _fetch_par(name):
-                parallel_db = True
             if _fetch_soe(name):
                 stop_on_error = True
 
@@ -296,7 +232,6 @@ def _run_sequential(app, tc_names: list[str], headless: bool):
             browser_name = "chrome"
 
         merged_matrix.pop("parallel", None)  # clean up legacy YAML key
-        parallel   = parallel_db
         iterations = _expand_matrix(merged_matrix)
         ts         = datetime.now().strftime("%y.%m.%d - %H:%M")
         base_name  = f"{ts} - {', '.join(tc_names)}"
@@ -309,60 +244,44 @@ def _run_sequential(app, tc_names: list[str], headless: bool):
             _timeout_timer.daemon = True
             _timeout_timer.start()
 
-        if parallel:
-            threads = [
-                threading.Thread(
-                    target=_run_matrix_iter_worker,
-                    args=(app, tc_names, all_items, merged_meta,
-                          iter_vars, iter_label, ts, headless,
-                          screenshot_on_error, step_timeout, stop_on_error),
-                    daemon=True,
-                )
-                for iter_vars, iter_label in iterations
-            ]
-            for t in threads:
-                t.start()
-            for t in threads:
-                t.join()
-        else:
-            app.driver = start_browser(headless=headless,
-                                       browser=browser_name, private=private)
-            if not app.running:
-                return
-            login(app.driver, url, username, password)
-            dismiss_cookie_banner(app.driver)
-            if not app.running:
-                return
+        app.driver = start_browser(headless=headless,
+                                   browser=browser_name, private=private)
+        if not app.running:
+            return
+        login(app.driver, url, username, password)
+        dismiss_cookie_banner(app.driver)
+        if not app.running:
+            return
 
-            release    = _read_release_from_page(app.driver)
-            app.results = []
-            for iter_vars, iter_label in iterations:
-                if not app.running:
-                    break
-                result_name = base_name + (f" [{iter_label}]" if iter_label else "")
-                results = NavigationTester(driver=app.driver, items=all_items,
-                                           screenshot_on_error=screenshot_on_error,
-                                           screenshot_dir=_SCREENSHOTS_DIR,
-                                           vars_context=iter_vars,
-                                           step_timeout=step_timeout,
-                                           stop_check=lambda: not app.running,
-                                           stop_on_error=stop_on_error).test_all()
-                app.results.extend(results)
-                save_results(result_name, results, release)
-                app.root.after(0, app._refresh_results_list)
+        release    = _read_release_from_page(app.driver)
+        app.results = []
+        for iter_vars, iter_label in iterations:
+            if not app.running:
+                break
+            result_name = base_name + (f" [{iter_label}]" if iter_label else "")
+            results = NavigationTester(driver=app.driver, items=all_items,
+                                       screenshot_on_error=screenshot_on_error,
+                                       screenshot_dir=_SCREENSHOTS_DIR,
+                                       vars_context=iter_vars,
+                                       step_timeout=step_timeout,
+                                       stop_check=lambda: not app.running,
+                                       stop_on_error=stop_on_error).test_all()
+            app.results.extend(results)
+            save_results(result_name, results, release, username)
+            app.root.after(0, app._refresh_results_list)
 
-                ok  = sum(1 for r in results if r.status == "OK")
-                err = sum(1 for r in results if r.status == "ERROR")
-                log.info(f"Done [{result_name}] — {ok} OK, {err} errors")
-                if err:
-                    from adapters.notification.email_notifier import send_failure_alert
-                    try:
-                        send_failure_alert(result_name, results)
-                    except Exception as mail_exc:
-                        log.error(f"Email alert failed: {mail_exc}")
-                        from tkinter import messagebox
-                        app.root.after(0, lambda e=mail_exc: messagebox.showerror(
-                            "Email Alert", f"Failed to send alert email:\n{e}"))
+            ok  = sum(1 for r in results if r.status == "OK")
+            err = sum(1 for r in results if r.status == "ERROR")
+            log.info(f"Done [{result_name}] — {ok} OK, {err} errors")
+            if err:
+                from adapters.notification.email_notifier import send_failure_alert
+                try:
+                    send_failure_alert(result_name, results)
+                except Exception as mail_exc:
+                    log.error(f"Email alert failed: {mail_exc}")
+                    from tkinter import messagebox
+                    app.root.after(0, lambda e=mail_exc: messagebox.showerror(
+                        "Email Alert", f"Failed to send alert email:\n{e}"))
 
     except Exception as e:
         log.error(f"Error: {e}")
@@ -376,108 +295,7 @@ def _run_sequential(app, tc_names: list[str], headless: bool):
         app.root.after(0, app._set_running, False)
 
 
-def _run_parallel(app, tc_names: list[str], headless: bool):
-    import threading
-
-    threads = [
-        threading.Thread(
-            target=_run_single_tc,
-            args=(app, name, headless),
-            daemon=True,
-        )
-        for name in tc_names
-    ]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join()
-
-    app.running = False
-    app.root.after(0, app._set_running, False)
-    app.root.after(0, app._refresh_results_list)
-
-
-def _run_single_tc(app, name: str, headless: bool):
-    from adapters.browser.driver import start_browser, quit_browser
-    from adapters.browser.login import login
-    from adapters.database.testresults import save_results
-
-    driver = None
-    try:
-        items, meta = load_testcases(name)
-        url          = meta.get("url", "")
-        browser_name = meta.get("browser", "chrome").strip().lower()
-        username     = str(meta.get("username", "")).strip()
-        password     = str(meta.get("password", "")).strip()
-        private      = bool(meta.get("private", False))
-
-        if not url:
-            log.error(f"[{name}] No URL found in YAML meta.")
-            return
-
-        if browser_name not in ("chrome", "edge", "firefox"):
-            browser_name = "chrome"
-
-        driver = start_browser(headless=headless, browser=browser_name, private=private)
-        app.drivers.append(driver)
-
-        if not app.running:
-            return
-
-        login(driver, url, username, password)
-        dismiss_cookie_banner(driver)
-
-        if not app.running:
-            return
-
-        ts      = datetime.now().strftime("%y.%m.%d - %H:%M")
-        release = _read_release_from_page(driver)
-        from adapters.database.testcases import (
-            fetch_screenshot_on_error as _fetch_sce,
-            fetch_step_timeout as _fetch_st,
-            fetch_stop_on_error as _fetch_soe,
-        )
-        screenshot_on_error = _fetch_sce(name)
-        step_timeout        = _fetch_st(name)
-        stop_on_error       = _fetch_soe(name)
-
-        iterations = _expand_matrix(dict(meta.get("matrix") or {}))
-
-        for iter_vars, iter_label in iterations:
-            result_name = f"{ts} - {name}" + (f" [{iter_label}]" if iter_label else "")
-            results = NavigationTester(driver=driver, items=items,
-                                       screenshot_on_error=screenshot_on_error,
-                                       screenshot_dir=_SCREENSHOTS_DIR,
-                                       vars_context=iter_vars,
-                                       step_timeout=step_timeout,
-                                       stop_check=lambda: not app.running,
-                                       stop_on_error=stop_on_error).test_all()
-            save_results(result_name, results, release)
-
-            ok  = sum(1 for r in results if r.status == "OK")
-            err = sum(1 for r in results if r.status == "ERROR")
-            log.info(f"Done [{result_name}] — {ok} OK, {err} errors")
-
-            if err:
-                from adapters.notification.email_notifier import send_failure_alert
-                try:
-                    send_failure_alert(result_name, results)
-                except Exception as mail_exc:
-                    log.error(f"Email alert failed [{name}]: {mail_exc}")
-
-    except Exception as e:
-        log.error(f"Error [{name}]: {e}")
-    finally:
-        if driver is not None:
-            try:
-                app.drivers.remove(driver)
-            except ValueError:
-                pass
-            quit_browser(driver)
-
-
 def run_automated_cli():
-    import threading
     from adapters.database.testcases import list_automated_testcases
 
     names = list_automated_testcases()
@@ -485,16 +303,10 @@ def run_automated_cli():
         print("No automated testcases defined.")
         return
 
-    print(f"Running {len(names)} automated testcase(s) in parallel: {', '.join(names)}")
+    print(f"Running {len(names)} automated testcase(s): {', '.join(names)}")
 
-    threads = [
-        threading.Thread(target=_run_single_tc_cli, args=(name,), daemon=True)
-        for name in names
-    ]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join()
+    for name in names:
+        _run_single_tc_cli(name)
 
     print("All automated testcases completed.")
 
@@ -545,7 +357,7 @@ def _run_single_tc_cli(name: str):
                                        vars_context=iter_vars,
                                        step_timeout=step_timeout,
                                        stop_on_error=stop_on_error).test_all()
-            save_results(result_name, results, release)
+            save_results(result_name, results, release, username)
 
             ok  = sum(1 for r in results if r.status == "OK")
             err = sum(1 for r in results if r.status == "ERROR")
@@ -1473,10 +1285,16 @@ class NavigationTester:
     def _test_read_value(self, item: NavigationItem):
         start = time.time()
         try:
-            el = WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, item.selector)))
-            text = (el.text or el.get_attribute("value")
-                    or el.get_attribute("textContent") or "").strip()
+            def _read_stable(driver):
+                try:
+                    el = driver.find_element(By.CSS_SELECTOR, item.selector)
+                    t = (el.text or el.get_attribute("value")
+                         or el.get_attribute("textContent") or "").strip()
+                    return t if t else False
+                except (StaleElementReferenceException, NoSuchElementException):
+                    return False
+
+            text = WebDriverWait(self.driver, 10).until(_read_stable)
             load_ms = int((time.time() - start) * 1000)
             if item.store_as and text:
                 self._context[item.store_as] = text

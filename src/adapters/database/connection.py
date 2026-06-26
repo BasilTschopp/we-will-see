@@ -10,7 +10,9 @@ def _db_path() -> str:
     import sys
     if getattr(sys, "frozen", False):
         base = os.path.dirname(os.path.abspath(sys.executable))
-        return os.path.join(base, "app.db")
+        db_dir = os.path.join(base, "data", "database")
+        os.makedirs(db_dir, exist_ok=True)
+        return os.path.join(db_dir, "app.db")
     # __file__ is src/adapters/database/connection.py — go up 3 levels to project root
     project_root = os.path.dirname(os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))

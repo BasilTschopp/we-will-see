@@ -2,8 +2,10 @@ import os
 import base64
 from datetime import datetime
 
-_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(
-    os.path.abspath(__file__))))
+import sys as _sys
+_PROJECT_ROOT = (os.path.dirname(os.path.abspath(_sys.executable))
+                 if getattr(_sys, "frozen", False)
+                 else os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 _REPORTS_DIR = os.path.join(_PROJECT_ROOT, "data", "reports")
 
 _CSS = """
@@ -171,7 +173,7 @@ def _esc(text: str) -> str:
 
 
 def generate_report(run_names: list[str]) -> str:
-    from adapters.database.testresults import fetch_results, fetch_release
+    from adapters.database.testresults import fetch_results, fetch_release, fetch_username
     from adapters.database.settings import get_report_errors_only, get_report_include_screenshots
 
     os.makedirs(_REPORTS_DIR, exist_ok=True)
@@ -182,7 +184,8 @@ def generate_report(run_names: list[str]) -> str:
 
     for run_name in run_names:
         results = fetch_results(run_name)
-        release = fetch_release(run_name)
+        release  = fetch_release(run_name)
+        username = fetch_username(run_name)
         if not results:
             continue
 
@@ -232,7 +235,8 @@ def generate_report(run_names: list[str]) -> str:
                 except Exception:
                     pass
 
-        release_html = f'<span class="run-release">Release {_esc(release)}</span>' if release else ""
+        release_html  = f'<span class="run-release">Release {_esc(release)}</span>' if release else ""
+        username_html = f'<span class="run-release">{_esc(username)}</span>' if username else ""
         badge = " · Errors only" if errors_only else ""
 
         table_html = f"""
@@ -263,6 +267,7 @@ def generate_report(run_names: list[str]) -> str:
             <div class="run-header">
                 <span class="run-title">{_esc(run_name)}{badge}</span>
                 {release_html}
+                {username_html}
             </div>
             <div class="summary">
                 <span class="stat stat-ok">&#10003; {ok_count} OK</span>
