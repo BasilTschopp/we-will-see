@@ -75,11 +75,6 @@ class ViewResults:
             fg=FG, font=(FONT, 10, "bold"), anchor="w", padx=10, pady=8)
         self.result_title.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
-        self.result_export_btn = tk.Label(header, text="⇩", bg=BG, fg=FG,
-                                          font=(FONT, 13), cursor="hand2")
-        self.result_export_btn.pack(side=tk.RIGHT, padx=(0, 4), pady=2)
-        self.result_export_btn.bind("<Button-1>", lambda _: self._on_export_result())
-        add_tooltip(self.result_export_btn, "Export YAML")
 
         tree_frame = tk.Frame(inner, bg=BG)
         tree_frame.pack(fill=tk.BOTH, expand=True)
@@ -280,43 +275,6 @@ class ViewResults:
     # Tree
     # ------------------------------------------------------------------
 
-    def _on_export_result(self):
-        sel = self.results_listbox.selection()
-        if not sel or len(sel) > 1:
-            return
-        name = sel[0]
-        from tkinter import filedialog
-        import yaml
-        from dataclasses import asdict
-        from adapters.database.testresults import fetch_results, fetch_release
-        results = fetch_results(name)
-        release = fetch_release(name)
-        _FIELDS = ['description', 'status', 'error_detail']
-        sorted_results = sorted(results, key=lambda x: x.timestamp)
-        def _to_dict(r):
-            raw = asdict(r)
-            return {k: raw[k] for k in _FIELDS if raw.get(k)}
-        data = [_to_dict(r) for r in sorted_results if r.method != 'wait']
-        date = sorted_results[0].timestamp if sorted_results else ""
-        safe_name = name.replace(":", "-").replace("/", "-").replace("\\", "-")
-        path = filedialog.asksaveasfilename(
-            defaultextension=".yaml",
-            filetypes=[("YAML files", "*.yaml"), ("All files", "*.*")],
-            initialfile=f"{safe_name}.yaml",
-            title="Export Result")
-        if not path:
-            return
-        with open(path, "w", encoding="utf-8") as f:
-            if date:
-                f.write(f"date: {date}\n")
-            if release:
-                f.write(f"release: {release}\n")
-            if date or release:
-                f.write("\n")
-            f.write('\n'.join(
-                yaml.dump(item, allow_unicode=True, sort_keys=False, width=float('inf'))
-                for item in data
-            ))
 
     def _make_screenshot_icon(self) -> tk.PhotoImage:
         img = tk.PhotoImage(width=14, height=11)
