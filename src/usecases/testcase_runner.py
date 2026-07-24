@@ -542,6 +542,8 @@ class NavigationTester:
             "assert":            self._test_assert_text,
             "assert_text":       self._test_assert_text,
             "assert_error":      self._test_assert_not_text,
+            "assert_absent":     self._test_assert_absent,
+            "assert_present":    self._test_assert_present,
             "assert_date_within": self._test_assert_date_within,
             "log_text":          self._test_log_text,
             "read_value":        self._test_read_value,
@@ -1213,6 +1215,74 @@ class NavigationTester:
         except Exception as e:
             self._record(item, status="ERROR",
                          error=f"Assert not text: {str(e)[:150]}",
+                         load_ms=int((time.time() - start) * 1000))
+
+    def _test_assert_absent(self, item: NavigationItem):
+        start = time.time()
+        try:
+            if item.source_url:
+                self.driver.get(item.source_url)
+                self._wait_for_dom_stable()
+            if not item.selector:
+                self._record(item, status="ERROR",
+                             error="No selector defined")
+                return
+            try:
+                el = WebDriverWait(self.driver, 5).until(
+                    EC.presence_of_element_located(
+                        (By.CSS_SELECTOR, item.selector)))
+                text = (el.text or el.get_attribute("textContent") or "").strip()
+            except TimeoutException:
+                text = ""
+
+            load_ms = int((time.time() - start) * 1000)
+            if text:
+                self._record(item, status="ERROR",
+                             error=f"Element vorhanden mit Inhalt: '{text[:60]}'",
+                             load_ms=load_ms)
+                log.warning(f"  ERROR ({load_ms}ms) — Element unerwartet vorhanden/gefüllt")
+            else:
+                self._record(item, status="OK",
+                             title=f"Element nicht vorhanden oder leer: '{item.selector}'",
+                             load_ms=load_ms)
+                log.info(f"  OK ({load_ms}ms) — Element nicht vorhanden oder leer")
+        except Exception as e:
+            self._record(item, status="ERROR",
+                         error=f"Assert absent: {str(e)[:150]}",
+                         load_ms=int((time.time() - start) * 1000))
+
+    def _test_assert_present(self, item: NavigationItem):
+        start = time.time()
+        try:
+            if item.source_url:
+                self.driver.get(item.source_url)
+                self._wait_for_dom_stable()
+            if not item.selector:
+                self._record(item, status="ERROR",
+                             error="No selector defined")
+                return
+            try:
+                el = WebDriverWait(self.driver, 10).until(
+                    EC.presence_of_element_located(
+                        (By.CSS_SELECTOR, item.selector)))
+                text = (el.text or el.get_attribute("textContent") or "").strip()
+            except TimeoutException:
+                text = ""
+
+            load_ms = int((time.time() - start) * 1000)
+            if text:
+                self._record(item, status="OK",
+                             title=f"Element vorhanden mit Inhalt: '{text[:40]}'",
+                             load_ms=load_ms)
+                log.info(f"  OK ({load_ms}ms) — Element vorhanden/gefüllt")
+            else:
+                self._record(item, status="ERROR",
+                             error=f"Element nicht vorhanden oder leer: '{item.selector}'",
+                             load_ms=load_ms)
+                log.warning(f"  ERROR ({load_ms}ms) — Element nicht vorhanden")
+        except Exception as e:
+            self._record(item, status="ERROR",
+                         error=f"Assert present: {str(e)[:150]}",
                          load_ms=int((time.time() - start) * 1000))
 
     def _test_assert_date_within(self, item: NavigationItem):
