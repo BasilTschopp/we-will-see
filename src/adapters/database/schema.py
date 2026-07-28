@@ -19,8 +19,8 @@ def create_tables():
             run_timeout         INTEGER NOT NULL DEFAULT 0,
             step_timeout        INTEGER NOT NULL DEFAULT 0,
             stop_on_error       INTEGER NOT NULL DEFAULT 0,
-            created_at          TEXT    NOT NULL DEFAULT (datetime('now')),
-            updated_at          TEXT    NOT NULL DEFAULT (datetime('now'))
+            created             TEXT    NOT NULL DEFAULT (datetime('now')),
+            updated             TEXT    NOT NULL DEFAULT (datetime('now'))
         );
 
         CREATE TABLE IF NOT EXISTS presets (
@@ -100,6 +100,14 @@ def create_tables():
                 "stop_on_error INTEGER NOT NULL DEFAULT 0"):
         try:
             conn.execute(f"ALTER TABLE testcases ADD COLUMN {col}")
+            conn.commit()
+        except Exception:
+            pass
+    # migration: rename created_at/updated_at to created/updated on testcases
+    for old, new in (("created_at", "created"), ("updated_at", "updated")):
+        try:
+            conn.execute(
+                f"ALTER TABLE testcases RENAME COLUMN {old} TO {new}")
             conn.commit()
         except Exception:
             pass

@@ -5,13 +5,13 @@ def upsert_testcase(name: str, yaml_text: str, category: str = "",
                     comment: str = "") -> None:
     conn = get_connection()
     conn.execute("""
-        INSERT INTO testcases (name, category, yaml_text, comment, updated_at)
+        INSERT INTO testcases (name, category, yaml_text, comment, updated)
         VALUES (?, ?, ?, ?, datetime('now'))
         ON CONFLICT(name) DO UPDATE SET
-            category   = excluded.category,
-            yaml_text  = excluded.yaml_text,
-            comment    = excluded.comment,
-            updated_at = datetime('now')
+            category = excluded.category,
+            yaml_text = excluded.yaml_text,
+            comment   = excluded.comment,
+            updated   = datetime('now')
     """, (name, category, yaml_text, comment))
     conn.commit()
 
@@ -123,16 +123,16 @@ def update_stop_on_error(name: str, value: bool) -> None:
 def list_automated_testcases() -> list[str]:
     conn = get_connection()
     rows = conn.execute(
-        "SELECT name FROM testcases WHERE automated = 1 ORDER BY updated_at DESC"
+        "SELECT name FROM testcases WHERE automated = 1 ORDER BY updated DESC"
     ).fetchall()
     return [r["name"] for r in rows]
 
 
 def list_testcases() -> list[tuple[str, str]]:
-    """Returns list of (name, category) ordered by updated_at desc."""
+    """Returns list of (name, category) ordered by updated desc."""
     conn = get_connection()
     rows = conn.execute(
-        "SELECT name, category FROM testcases ORDER BY updated_at DESC"
+        "SELECT name, category FROM testcases ORDER BY updated DESC"
     ).fetchall()
     return [(r["name"], r["category"]) for r in rows]
 
@@ -146,7 +146,7 @@ def delete_testcase(name: str) -> None:
 def rename_testcase(old_name: str, new_name: str) -> None:
     conn = get_connection()
     conn.execute(
-        "UPDATE testcases SET name = ?, updated_at = datetime('now') WHERE name = ?",
+        "UPDATE testcases SET name = ?, updated = datetime('now') WHERE name = ?",
         (new_name, old_name)
     )
     conn.commit()
@@ -155,7 +155,7 @@ def rename_testcase(old_name: str, new_name: str) -> None:
 def update_category(name: str, category: str) -> None:
     conn = get_connection()
     conn.execute(
-        "UPDATE testcases SET category = ?, updated_at = datetime('now') WHERE name = ?",
+        "UPDATE testcases SET category = ?, updated = datetime('now') WHERE name = ?",
         (category, name)
     )
     conn.commit()
