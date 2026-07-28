@@ -28,15 +28,7 @@ Python-based test automation for web applications.
 - Build a standalone Windows executable: `pyinstaller app.spec`
 - Automation: test cases marked as automated can be scheduled for server-side execution: `py main.py --automated`
 
-## License  - method: foreach
-    var: product_nos
-    description: Add products
-    steps:
-      - method: form_input
-        selector: input[name="product_no"]
-        input_value: "{{product_nos}}"
-        submit_key: enter
-        description: Add product position
+## License
 
 - Licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE).
 - Free use, modification, and distribution for non-commercial purposes only.
