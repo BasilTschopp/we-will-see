@@ -172,13 +172,10 @@ def _esc(text: str) -> str:
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-def generate_report(run_names: list[str]) -> str:
+def generate_report(run_names: list[str], errors_only: bool = False) -> str:
     from adapters.database.testresults import fetch_results, fetch_release, fetch_username
-    from adapters.database.settings import get_report_errors_only, get_report_include_screenshots
 
     os.makedirs(_REPORTS_DIR, exist_ok=True)
-    errors_only         = get_report_errors_only()
-    include_screenshots = get_report_include_screenshots()
     date_str = datetime.now().strftime("%d.%m.%Y  %H:%M")
     runs_html = ""
 
@@ -221,7 +218,7 @@ def generate_report(run_names: list[str]) -> str:
                         <td class="td-err">{error}</td>
                     </tr>"""
 
-            if (include_screenshots and is_error
+            if (is_error
                     and result.screenshot_path and os.path.isfile(result.screenshot_path)):
                 try:
                     with open(result.screenshot_path, "rb") as f:

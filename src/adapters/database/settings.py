@@ -74,19 +74,3 @@ def set_error_page_keywords(keywords: list[str]) -> None:
     set_setting("error_page_keywords", "\n".join(keywords))
 
 
-def get_report_errors_only() -> bool:
-    return get_setting("report_errors_only", "0") == "1"
-
-
-def set_report_errors_only(value: bool) -> None:
-    set_setting("report_errors_only", "1" if value else "0")
-
-
-def get_report_include_screenshots() -> bool:
-    return get_setting("report_include_screenshots", "1") == "1"
-
-
-def set_report_include_screenshots(value: bool) -> None:
-    set_setting("report_include_screenshots", "1" if value else "0")
-
-

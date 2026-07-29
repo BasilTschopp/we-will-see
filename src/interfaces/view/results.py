@@ -49,7 +49,9 @@ class ViewResults:
             activeforeground=SUB_SEL_FG, borderwidth=0,
             font=(FONT, 10))
         self._results_context_menu.add_command(
-            label="Generate Report", command=self._on_generate_report)
+            label="Report - Full", command=lambda: self._on_generate_report(False))
+        self._results_context_menu.add_command(
+            label="Report - Only Errors", command=lambda: self._on_generate_report(True))
         self._results_context_menu.add_separator()
         self._results_context_menu.add_command(
             label="Delete", command=self._on_delete_result)
@@ -178,7 +180,7 @@ class ViewResults:
         from adapters.database.testresults import fetch_results
         self._load_results_into_tree(fetch_results(name))
 
-    def _on_generate_report(self):
+    def _on_generate_report(self, errors_only: bool):
         sel = self.results_listbox.selection()
         if not sel:
             messagebox.showinfo("", "Please select one or more results.")
@@ -186,7 +188,7 @@ class ViewResults:
         names = list(sel)
         try:
             from usecases.report_generator import generate_report
-            path = generate_report(names)
+            path = generate_report(names, errors_only=errors_only)
         except Exception as e:
             messagebox.showerror("Report Error", str(e))
             return

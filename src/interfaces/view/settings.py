@@ -23,7 +23,6 @@ class ViewSettings:
         self._settings_url_presets_frame  = self._build_url_presets_panel(self.content_settings)
         self._settings_email_frame        = self._build_email_panel(self.content_settings)
         self._settings_release_frame      = self._build_release_panel(self.content_settings)
-        self._settings_report_frame       = self._build_report_panel(self.content_settings)
         self._settings_testing_frame      = self._build_testing_panel(self.content_settings)
 
     # ------------------------------------------------------------------
@@ -79,7 +78,6 @@ class ViewSettings:
         _card("E-Mail Alerts",        "SMTP settings for automated test failure alerts.",           self._show_settings_email_panel)
         _card("Error Page Detection", "Keywords checked in the page title to detect error pages.",  self._show_settings_error_page_detection)
         _card("Release Detection",    "CSS selector and regex for the release number.",              self._show_settings_release)
-        _card("Report",               "Configure content and screenshots for generated reports.",    self._show_settings_report_panel)
         _card("URL Presets",          "Saved URLs with login credentials.",                         self._show_settings_url_presets)
 
         return frame
@@ -679,67 +677,6 @@ class ViewSettings:
         self._release_status_lbl.config(text="Reset to default.", fg=ACCENT)
 
     # ------------------------------------------------------------------
-    # Report panel
-    # ------------------------------------------------------------------
-
-    def _build_report_panel(self, parent: tk.Frame) -> tk.Frame:
-        frame = tk.Frame(parent, bg=BG)
-        inner = tk.Frame(frame, bg=BG)
-        inner.pack(fill=tk.BOTH, expand=True, padx=24, pady=24)
-
-        tk.Label(inner, text="Create Report", bg=BG, fg=FG,
-                 font=(FONT, 13, "bold"), anchor="w").pack(anchor="w", pady=(0, 4))
-        tk.Frame(inner, bg=BORDER, height=1).pack(fill=tk.X, pady=(0, 20))
-
-        tk.Label(inner, text="Content",
-                 bg=BG, fg=FG_SEC, font=(FONT, 10, "bold"), anchor="w"
-                 ).pack(anchor="w", pady=(0, 10))
-
-        self._report_content_var = tk.StringVar(value="all")
-
-        def _save_content():
-            from adapters.database.settings import set_report_errors_only
-            set_report_errors_only(self._report_content_var.get() == "errors_only")
-
-        for value, label, desc in [
-            ("all",         "Full report", "Include all test steps"),
-            ("errors_only", "Errors only", "Include only failed steps"),
-        ]:
-            tk.Radiobutton(
-                inner, text=f"{label} ({desc})",
-                variable=self._report_content_var, value=value,
-                bg=BG, fg=FG, selectcolor=BG2, activebackground=BG,
-                font=(FONT, 10), anchor="w", command=_save_content,
-            ).pack(anchor="w", pady=1)
-
-        tk.Frame(inner, bg=BORDER, height=1).pack(fill=tk.X, pady=(16, 12))
-
-        tk.Label(inner, text="Screenshots",
-                 bg=BG, fg=FG_SEC, font=(FONT, 10, "bold"), anchor="w"
-                 ).pack(anchor="w", pady=(0, 8))
-
-        self._report_screenshots_var = tk.BooleanVar(value=True)
-
-        def _save_screenshots():
-            from adapters.database.settings import set_report_include_screenshots
-            set_report_include_screenshots(self._report_screenshots_var.get())
-
-        tk.Checkbutton(
-            inner, text="Include screenshots in report",
-            variable=self._report_screenshots_var,
-            bg=BG, fg=FG, selectcolor=BG2, activebackground=BG,
-            font=(FONT, 10), anchor="w", command=_save_screenshots,
-        ).pack(anchor="w")
-
-        return frame
-
-    def _refresh_report_panel(self):
-        from adapters.database.settings import get_report_errors_only, get_report_include_screenshots
-        self._report_content_var.set(
-            "errors_only" if get_report_errors_only() else "all")
-        self._report_screenshots_var.set(get_report_include_screenshots())
-
-    # ------------------------------------------------------------------
     # Testing panel
     # ------------------------------------------------------------------
 
@@ -831,7 +768,7 @@ class ViewSettings:
                   self._settings_backup_frame, self._settings_presets_home_frame,
                   self._settings_categories_frame, self._settings_url_presets_frame,
                   self._settings_email_frame, self._settings_release_frame,
-                  self._settings_report_frame, self._settings_testing_frame):
+                  self._settings_testing_frame):
             f.pack_forget()
 
     def _show_settings_backup(self):
@@ -847,11 +784,6 @@ class ViewSettings:
         self._hide_all_settings_panels()
         self._refresh_email_panel()
         self._settings_email_frame.pack(fill=tk.BOTH, expand=True)
-
-    def _show_settings_report_panel(self):
-        self._hide_all_settings_panels()
-        self._refresh_report_panel()
-        self._settings_report_frame.pack(fill=tk.BOTH, expand=True)
 
     def _show_settings_error_page_detection(self):
         self._hide_all_settings_panels()
