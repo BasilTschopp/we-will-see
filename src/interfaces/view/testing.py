@@ -148,11 +148,6 @@ class ViewTesting:
         self._settings_btn.bind("<Button-1>", lambda _: self._on_tc_settings())
         add_tooltip(self._settings_btn, "Testcase Settings")
 
-        self.save_btn = tk.Label(footer, text="💾", bg=BG, fg=FG,
-                                 font=(FONT, 13), cursor="hand2")
-        self.save_btn.pack(side=tk.LEFT, padx=(4, 0), pady=2)
-        self.save_btn.bind("<Button-1>", lambda _: self._on_save())
-        add_tooltip(self.save_btn, "Save")
         self._search_matches: list = []
         self._search_idx:     int  = -1
 
@@ -516,8 +511,6 @@ class ViewTesting:
         from adapters.database.testcases import fetch_testcase_yaml, upsert_testcase
         _, category = fetch_testcase_yaml(self._current_tc_name)
         upsert_testcase(self._current_tc_name, content, category)
-        self.save_btn.configure(fg=ACCENT)
-        self.root.after(800, lambda: self.save_btn.configure(fg=FG))
 
     def _on_editor_focusout(self, _=None):
         if not self._current_tc_name:
