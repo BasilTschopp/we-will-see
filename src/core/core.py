@@ -53,28 +53,6 @@ NAV_CLICK_SELECTORS = [
     "header a", "header button",
 ]
 
-PAGINATION_SELECTORS = [
-    ".q-table__bottom button",
-    "button[aria-label*='Seite']", "button[aria-label*='seite']",
-    "button[aria-label*='next']", "button[aria-label*='Next']",
-    "button[aria-label*='previous']", "button[aria-label*='Previous']",
-    ".mat-paginator button",
-    ".pagination button", ".pagination a",
-    "[class*='pagination'] button",
-]
-
-MODAL_TRIGGER_SELECTORS = [
-    "[data-toggle='modal']", "[data-bs-toggle='modal']",
-    "[data-target^='#']", "[data-bs-target^='#']",
-    "[aria-haspopup='dialog']", "[aria-haspopup='true']",
-]
-
-MODAL_CONTAINER_SELECTORS = [
-    "[role='dialog']", "[role='alertdialog']",
-    ".modal", ".dialog", "[class*='modal']", "[class*='dialog']",
-    "[aria-modal='true']",
-]
-
 TABLE_ROW_SELECTORS = [
     "table tbody tr",
     "mat-row", ".mat-row", ".mat-mdc-row",

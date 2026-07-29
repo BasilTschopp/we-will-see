@@ -133,8 +133,7 @@ from selenium.common.exceptions import (
 from core.core import (
     log, NavigationItem, NavigationResult, dom_fingerprint,
     dismiss_cookie_banner,
-    NAV_CLICK_SELECTORS, MODAL_TRIGGER_SELECTORS, MODAL_CONTAINER_SELECTORS,
-    PAGINATION_SELECTORS, TABLE_ROW_SELECTORS,
+    NAV_CLICK_SELECTORS, TABLE_ROW_SELECTORS,
 )
 from usecases.testcase_reader import load_testcases
 from usecases.testcase_writer import save_testcase
@@ -533,18 +532,12 @@ class NavigationTester:
         self._dispatch = {
             "link":              self._test_link,
             "nav_click":         self._test_nav_click,
-            "modal":             self._test_modal,
-            "tab":               self._test_tab,
-            "pagination":        self._test_pagination,
             "table_row":         self._test_table_row,
             "form_input":        self._test_form_input,
             "click":             self._test_click,
-            "assert":            self._test_assert_text,
             "assert_text":       self._test_assert_text,
-            "assert_error":      self._test_assert_not_text,
             "assert_absent":     self._test_assert_absent,
             "assert_present":    self._test_assert_present,
-            "assert_date_within": self._test_assert_date_within,
             "log_text":          self._test_log_text,
             "read_value":        self._test_read_value,
             "wait":              self._test_wait,
@@ -656,20 +649,14 @@ class NavigationTester:
 
         self._context[var_name] = var_value  # restore list
 
-    def _navigate_and_find(self, item, selector, match_attr="text"):
+    def _navigate_and_find(self, item, selector):
         base = item.source_url or item.url.split("#")[0]
         self.driver.get(base)
         self._wait_for_dom_stable()
         elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
         for el in elements:
             try:
-                if match_attr == "text":
-                    val = (el.text.strip()[:50] if el.text else "")
-                elif match_attr == "label":
-                    val = el.text.strip()[:30] if el.text else ""
-                    val = val or (el.get_attribute("aria-label") or "")
-                else:
-                    val = ""
+                val = (el.text.strip()[:50] if el.text else "")
                 if val and item.element_text and val == item.element_text:
                     if el.is_displayed():
                         return el
@@ -764,86 +751,6 @@ class NavigationTester:
             else:
                 self._record(item, status="ERROR",
                              error=f"Element '{item.element_text}' not clickable",
-                             load_ms=load_ms)
-        except Exception as e:
-            self._record(item, status="ERROR", error=str(e)[:200],
-                         load_ms=int((time.time() - start) * 1000))
-
-    def _test_modal(self, item: NavigationItem):
-        start = time.time()
-        try:
-            selector = ", ".join(MODAL_TRIGGER_SELECTORS)
-            el       = self._navigate_and_find(item, selector)
-            load_ms  = int((time.time() - start) * 1000)
-            pre_url  = self.driver.current_url if el else ""
-            if el and self._safe_click(el):
-                self._wait_for_dom_stable(pre_url=pre_url)
-                modal_sel = ", ".join(MODAL_CONTAINER_SELECTORS)
-                modals    = self.driver.find_elements(By.CSS_SELECTOR, modal_sel)
-                visible   = [m for m in modals if m.is_displayed()]
-                if visible:
-                    self._record(item, status="OK",
-                                 title=f"Modal opened via '{item.element_text}'",
-                                 load_ms=load_ms)
-                    log.info(f"  Modal OK ({load_ms}ms)")
-                    try:
-                        ActionChains(self.driver).send_keys(Keys.ESCAPE).perform()
-                        self._wait_for_dom_stable()
-                    except Exception:
-                        pass
-                else:
-                    self._record(item, status="OK",
-                                 title=f"DOM change via '{item.element_text}'",
-                                 load_ms=load_ms)
-            else:
-                self._record(item, status="ERROR",
-                             error=f"Modal trigger '{item.element_text}' not clickable",
-                             load_ms=load_ms)
-        except Exception as e:
-            self._record(item, status="ERROR", error=str(e)[:200],
-                         load_ms=int((time.time() - start) * 1000))
-
-    def _test_tab(self, item: NavigationItem):
-        start = time.time()
-        try:
-            el      = self._navigate_and_find(item, "[role='tab']")
-            pre_fp  = dom_fingerprint(self.driver)
-            load_ms = int((time.time() - start) * 1000)
-            if el and el.is_displayed():
-                el.click()
-                self._wait_for_dom_stable()
-                changed = dom_fingerprint(self.driver) != pre_fp
-                self._record(item, status="OK",
-                             title=f"Tab '{item.element_text}'"
-                                   f"{'' if changed else ' (no DOM change)'}",
-                             load_ms=load_ms)
-                log.info(f"  Tab OK ({load_ms}ms)")
-            else:
-                self._record(item, status="ERROR",
-                             error=f"Tab '{item.element_text}' not clickable",
-                             load_ms=load_ms)
-        except Exception as e:
-            self._record(item, status="ERROR", error=str(e)[:200],
-                         load_ms=int((time.time() - start) * 1000))
-
-    def _test_pagination(self, item: NavigationItem):
-        start = time.time()
-        try:
-            selector = ", ".join(PAGINATION_SELECTORS)
-            el       = self._navigate_and_find(item, selector, match_attr="label")
-            pre_fp   = dom_fingerprint(self.driver)
-            load_ms  = int((time.time() - start) * 1000)
-            if el and self._safe_click(el):
-                self._wait_for_dom_stable()
-                changed = dom_fingerprint(self.driver) != pre_fp
-                self._record(item, status="OK",
-                             title=f"Pagination '{item.element_text}'"
-                                   f"{'' if changed else ' (no change)'}",
-                             load_ms=load_ms)
-                log.info(f"  Pagination OK ({load_ms}ms)")
-            else:
-                self._record(item, status="ERROR",
-                             error=f"Pagination '{item.element_text}' not clickable",
                              load_ms=load_ms)
         except Exception as e:
             self._record(item, status="ERROR", error=str(e)[:200],
@@ -1176,47 +1083,6 @@ class NavigationTester:
                          error=f"Assert: {str(e)[:150]}",
                          load_ms=int((time.time() - start) * 1000))
 
-    def _test_assert_not_text(self, item: NavigationItem):
-        start = time.time()
-        try:
-            if item.source_url:
-                self.driver.get(item.source_url)
-                self._wait_for_dom_stable()
-            search = resolve_input_value(item.assert_text or item.input_value, self._context)
-            if not search:
-                self._record(item, status="ERROR",
-                             error="No assert_text defined")
-                return
-            if item.selector:
-                try:
-                    el = WebDriverWait(self.driver, 5).until(
-                        EC.presence_of_element_located(
-                            (By.CSS_SELECTOR, item.selector)))
-                    body_text = (el.text
-                                 or el.get_attribute("textContent")
-                                 or "").strip()
-                except TimeoutException:
-                    body_text = ""
-            else:
-                body_text = self.driver.find_element(
-                    By.TAG_NAME, "body").text or ""
-
-            load_ms = int((time.time() - start) * 1000)
-            if search.lower() in body_text.lower():
-                self._record(item, status="ERROR",
-                             error=f"'{search[:60]}'",
-                             load_ms=load_ms)
-                log.warning(f"  ERROR ({load_ms}ms) — Unerwarteter Text gefunden")
-            else:
-                self._record(item, status="OK",
-                             title=f"Text nicht vorhanden: '{search[:40]}'",
-                             load_ms=load_ms)
-                log.info(f"  OK ({load_ms}ms) — Text nicht vorhanden")
-        except Exception as e:
-            self._record(item, status="ERROR",
-                         error=f"Assert not text: {str(e)[:150]}",
-                         load_ms=int((time.time() - start) * 1000))
-
     def _test_assert_absent(self, item: NavigationItem):
         start = time.time()
         try:
@@ -1283,57 +1149,6 @@ class NavigationTester:
         except Exception as e:
             self._record(item, status="ERROR",
                          error=f"Assert present: {str(e)[:150]}",
-                         load_ms=int((time.time() - start) * 1000))
-
-    def _test_assert_date_within(self, item: NavigationItem):
-        from datetime import datetime, timedelta
-        start = time.time()
-        try:
-            hours = float(item.input_value) if item.input_value else 24.0
-            if item.source_url:
-                self.driver.get(item.source_url)
-                self._wait_for_dom_stable()
-            if item.selector:
-                try:
-                    el = WebDriverWait(self.driver, 10).until(
-                        EC.presence_of_element_located(
-                            (By.CSS_SELECTOR, item.selector)))
-                    text = (el.get_attribute("textContent") or el.text or "").strip()
-                except TimeoutException:
-                    text = ""
-            else:
-                text = self.driver.find_element(By.TAG_NAME, "body").text or ""
-
-            load_ms = int((time.time() - start) * 1000)
-
-            parsed = None
-            for fmt in ("%d.%m.%Y, %H:%M:%S", "%d.%m.%Y %H:%M:%S", "%d.%m.%Y"):
-                try:
-                    parsed = datetime.strptime(text.strip(), fmt)
-                    break
-                except ValueError:
-                    continue
-
-            if parsed is None:
-                self._record(item, status="ERROR",
-                             error=f"Datum nicht parsbar: '{text[:60]}'",
-                             load_ms=load_ms)
-                return
-
-            age = datetime.now() - parsed
-            age_h = int(age.total_seconds() / 3600)
-            if age <= timedelta(hours=hours):
-                self._record(item, status="OK",
-                             title=f"Letzter Lauf: {text} ({age_h}h alt)",
-                             load_ms=load_ms)
-                log.info(f"  OK ({load_ms}ms) — {age_h}h alt")
-            else:
-                self._record(item, status="ERROR",
-                             error=f"Letzter Lauf zu alt: {text} ({age_h}h > {int(hours)}h)",
-                             load_ms=load_ms)
-        except Exception as e:
-            self._record(item, status="ERROR",
-                         error=f"assert_date_within: {str(e)[:150]}",
                          load_ms=int((time.time() - start) * 1000))
 
     def _test_log_text(self, item: NavigationItem):
