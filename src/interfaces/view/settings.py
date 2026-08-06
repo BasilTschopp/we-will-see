@@ -18,6 +18,7 @@ class ViewSettings:
 
         self._settings_main_home_frame    = self._build_main_home_panel(self.content_settings)
         self._settings_backup_frame       = self._build_backup_panel(self.content_settings)
+        self._settings_database_frame     = self._build_database_panel(self.content_settings)
         self._settings_presets_home_frame = self._build_presets_home_panel(self.content_settings)
         self._settings_categories_frame   = self._build_categories_panel(self.content_settings)
         self._settings_url_presets_frame  = self._build_url_presets_panel(self.content_settings)
@@ -70,9 +71,10 @@ class ViewSettings:
         CARD_MIN_WIDTH = 340
         CARD_MAX_COLS  = 3
 
-        def _card(title, desc, command):
+        def _card(title, desc, command, hide_when_postgres=False):
             card = tk.Frame(grid_frame, bg=BG2, cursor="hand2",
                             highlightthickness=1, highlightbackground=BORDER)
+            card._hide_when_postgres = hide_when_postgres
             card_inner = tk.Frame(card, bg=BG2)
             card_inner.pack(fill=tk.X, padx=16, pady=12)
 
@@ -97,8 +99,10 @@ class ViewSettings:
             cards.append(card)
 
         _card("Automated",            "Choose which testcases run via --automated.",                self._show_settings_automated)
-        _card("Backup",               "Save or restore the database.",                              self._show_settings_backup)
+        _card("Backup",               "Save or restore the database.",                              self._show_settings_backup,
+              hide_when_postgres=True)
         _card("Categories",           "Manage categories for assigning testcases.",                 self._show_settings_categories)
+        _card("Database",             "Choose SQLite or an external PostgreSQL database.",          self._show_settings_database)
         _card("E-Mail Alerts",        "SMTP settings for automated test failure alerts.",           self._show_settings_email_panel)
         _card("Error Page Detection", "Keywords checked in the page title to detect error pages.",  self._show_settings_error_page_detection)
         _card("Performance",          "Thresholds for highlighting slow testcase runs.",            self._show_settings_performance)
@@ -106,21 +110,27 @@ class ViewSettings:
         _card("Testing",              "Execution settings applied to every testcase run.",          self._show_settings_execution)
         _card("URL Presets",          "Saved URLs with login credentials.",                         self._show_settings_url_presets)
 
-        def _relayout_cards(width: int):
+        def _visible_cards():
+            from adapters.database.dbconfig import load_db_config
+            is_postgres = load_db_config().get("engine") == "postgres"
+            return [c for c in cards if not (is_postgres and c._hide_when_postgres)]
+
+        def _relayout_cards(width: int = None):
+            if width is None:
+                width = canvas.winfo_width() or (CARD_MIN_WIDTH * CARD_MAX_COLS)
+            visible = _visible_cards()
             avail = max(width - 48, 200)
             cols  = max(1, min(CARD_MAX_COLS, avail // CARD_MIN_WIDTH))
-            if getattr(grid_frame, "_current_cols", None) == cols:
-                return
-            grid_frame._current_cols = cols
             for c in cards:
                 c.grid_forget()
             for col in range(CARD_MAX_COLS):
                 grid_frame.columnconfigure(col, weight=1 if col < cols else 0,
                                            uniform="cards" if col < cols else "")
-            for i, c in enumerate(cards):
+            for i, c in enumerate(visible):
                 r, col = divmod(i, cols)
                 c.grid(row=r, column=col, sticky="nsew", padx=6, pady=6)
 
+        self._relayout_settings_home_cards = _relayout_cards
         _relayout_cards(canvas.winfo_reqwidth() or 700)
 
         return frame
@@ -209,6 +219,179 @@ class ViewSettings:
             self._refresh_results_list()
         except Exception as e:
             messagebox.showerror("Restore failed", str(e))
+
+    # ------------------------------------------------------------------
+    # Database panel
+    # ------------------------------------------------------------------
+
+    def _build_database_panel(self, parent: tk.Frame) -> tk.Frame:
+        frame = tk.Frame(parent, bg=BG)
+        inner = tk.Frame(frame, bg=BG)
+        inner.pack(fill=tk.BOTH, expand=True, padx=24, pady=24)
+
+        tk.Label(inner, text="Database", bg=BG, fg=FG,
+                 font=(FONT, 13, "bold"), anchor="w").pack(anchor="w", pady=(0, 4))
+        tk.Frame(inner, bg=BORDER, height=1).pack(fill=tk.X, pady=(0, 16))
+
+        tk.Label(inner, text="Choose SQLite (local file) or an external PostgreSQL database.",
+                 bg=BG, fg=FG_SEC, font=(FONT, 10), anchor="w").pack(anchor="w", pady=(0, 12))
+
+        self._db_engine_var = tk.StringVar(value="sqlite")
+
+        engine_row = tk.Frame(inner, bg=BG)
+        engine_row.pack(anchor="w", pady=(0, 14))
+        tk.Radiobutton(
+            engine_row, text="SQLite", variable=self._db_engine_var, value="sqlite",
+            bg=BG, fg=FG, selectcolor=BG2, activebackground=BG, font=(FONT, 10),
+            command=self._on_db_engine_change
+        ).pack(side=tk.LEFT, padx=(0, 16))
+        tk.Radiobutton(
+            engine_row, text="PostgreSQL", variable=self._db_engine_var, value="postgres",
+            bg=BG, fg=FG, selectcolor=BG2, activebackground=BG, font=(FONT, 10),
+            command=self._on_db_engine_change
+        ).pack(side=tk.LEFT)
+
+        def _entry_row(parent_frame, label, width=None, show=None):
+            row = tk.Frame(parent_frame, bg=BG)
+            row.pack(fill=tk.X, pady=3)
+            tk.Label(row, text=label, bg=BG, fg=FG_SEC,
+                     font=(FONT, 10), width=14, anchor="w").pack(side=tk.LEFT)
+            kwargs = {"show": show} if show else {}
+            e = tk.Entry(row, bg=BG2, fg=FG, font=(FONT, 10),
+                         insertbackground=ACCENT, relief="flat",
+                         highlightthickness=1, highlightbackground=BORDER, **kwargs)
+            if width:
+                e.configure(width=width)
+                e.pack(side=tk.LEFT, ipady=4)
+            else:
+                e.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=4)
+            return e
+
+        fields_frame = tk.Frame(inner, bg=BG)
+        fields_frame.pack(fill=tk.X)
+
+        # SQLite fields
+        self._db_sqlite_frame = tk.Frame(fields_frame, bg=BG)
+        self._db_sqlite_frame.pack(fill=tk.X)
+
+        path_row = tk.Frame(self._db_sqlite_frame, bg=BG)
+        path_row.pack(fill=tk.X, pady=3)
+        tk.Label(path_row, text="File Path", bg=BG, fg=FG_SEC,
+                 font=(FONT, 10), width=14, anchor="w").pack(side=tk.LEFT)
+        self._db_sqlite_path_entry = tk.Entry(
+            path_row, bg=BG2, fg=FG, font=(FONT, 10),
+            insertbackground=ACCENT, relief="flat",
+            highlightthickness=1, highlightbackground=BORDER)
+        self._db_sqlite_path_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=4, padx=(0, 6))
+        browse_btn = tk.Label(path_row, text="Browse…", bg=BG2, fg=FG,
+                              font=(FONT, 10), cursor="hand2", padx=10, pady=4,
+                              relief="flat", highlightthickness=1, highlightbackground=BORDER)
+        browse_btn.pack(side=tk.LEFT)
+        browse_btn.bind("<Button-1>", lambda _: self._on_db_sqlite_browse())
+
+        tk.Label(self._db_sqlite_frame, text="Leave empty to use the app-managed default location.",
+                 bg=BG, fg=FG_SEC, font=(FONT, 9), anchor="w").pack(anchor="w", pady=(2, 0))
+
+        # PostgreSQL fields
+        self._db_pg_frame = tk.Frame(fields_frame, bg=BG)
+
+        self._db_pg_host_entry   = _entry_row(self._db_pg_frame, "Host")
+        self._db_pg_port_entry   = _entry_row(self._db_pg_frame, "Port", width=8)
+        self._db_pg_dbname_entry = _entry_row(self._db_pg_frame, "Database")
+        self._db_pg_user_entry   = _entry_row(self._db_pg_frame, "User")
+        self._db_pg_pass_entry   = _entry_row(self._db_pg_frame, "Password", show="•")
+
+        btn_row = tk.Frame(inner, bg=BG)
+        btn_row.pack(anchor="w", pady=(18, 0))
+
+        save_btn = tk.Label(btn_row, text="Save", bg=ACCENT, fg="#ffffff",
+                            font=(FONT, 10, "bold"), cursor="hand2", padx=12, pady=6)
+        save_btn.pack(side=tk.LEFT, padx=(0, 8))
+        save_btn.bind("<Button-1>", lambda _: self._on_database_save())
+
+        test_btn = tk.Label(btn_row, text="Test connection", bg=BG2, fg=FG,
+                            font=(FONT, 10), cursor="hand2", padx=12, pady=6,
+                            relief="flat", highlightthickness=1, highlightbackground=BORDER)
+        test_btn.pack(side=tk.LEFT)
+        test_btn.bind("<Button-1>", lambda _: self._on_database_test())
+
+        self._db_status_lbl = tk.Label(inner, text="", bg=BG, fg=FG_SEC,
+                                       font=(FONT, 10), anchor="w", wraplength=480, justify="left")
+        self._db_status_lbl.pack(anchor="w", pady=(8, 0))
+
+        return frame
+
+    def _on_db_engine_change(self):
+        if self._db_engine_var.get() == "postgres":
+            self._db_sqlite_frame.pack_forget()
+            self._db_pg_frame.pack(fill=tk.X)
+        else:
+            self._db_pg_frame.pack_forget()
+            self._db_sqlite_frame.pack(fill=tk.X)
+
+    def _on_db_sqlite_browse(self):
+        dest = filedialog.asksaveasfilename(
+            title="Select SQLite database file",
+            defaultextension=".db",
+            filetypes=[("SQLite database", "*.db"), ("All files", "*.*")])
+        if dest:
+            self._db_sqlite_path_entry.delete(0, tk.END)
+            self._db_sqlite_path_entry.insert(0, dest)
+
+    def _refresh_database_panel(self):
+        from adapters.database.dbconfig import load_db_config
+        cfg = load_db_config()
+        self._db_engine_var.set(cfg.get("engine", "sqlite"))
+        self._db_sqlite_path_entry.delete(0, tk.END)
+        self._db_sqlite_path_entry.insert(0, cfg.get("sqlite_path", ""))
+        self._db_pg_host_entry.delete(0, tk.END)
+        self._db_pg_host_entry.insert(0, cfg.get("pg_host", ""))
+        self._db_pg_port_entry.delete(0, tk.END)
+        self._db_pg_port_entry.insert(0, str(cfg.get("pg_port", 5432)))
+        self._db_pg_dbname_entry.delete(0, tk.END)
+        self._db_pg_dbname_entry.insert(0, cfg.get("pg_dbname", ""))
+        self._db_pg_user_entry.delete(0, tk.END)
+        self._db_pg_user_entry.insert(0, cfg.get("pg_user", ""))
+        self._db_pg_pass_entry.delete(0, tk.END)
+        self._db_pg_pass_entry.insert(0, cfg.get("pg_password", ""))
+        self._on_db_engine_change()
+        self._db_status_lbl.config(text="")
+
+    def _collect_database_form(self) -> dict:
+        try:
+            port = int(self._db_pg_port_entry.get().strip() or "5432")
+        except ValueError:
+            port = 5432
+        return {
+            "engine":      self._db_engine_var.get(),
+            "sqlite_path": self._db_sqlite_path_entry.get().strip(),
+            "pg_host":     self._db_pg_host_entry.get().strip(),
+            "pg_port":     port,
+            "pg_dbname":   self._db_pg_dbname_entry.get().strip(),
+            "pg_user":     self._db_pg_user_entry.get().strip(),
+            "pg_password": self._db_pg_pass_entry.get(),
+        }
+
+    def _on_database_save(self):
+        from adapters.database.dbconfig import save_db_config
+        save_db_config(self._collect_database_form())
+        self._db_status_lbl.config(text="Saved.", fg=ACCENT)
+
+    def _on_database_test(self):
+        cfg = self._collect_database_form()
+        if cfg["engine"] == "sqlite":
+            self._db_status_lbl.config(text="SQLite needs no connection test — just save.", fg=FG_SEC)
+            return
+        try:
+            import psycopg2
+            conn = psycopg2.connect(
+                host=cfg["pg_host"], port=cfg["pg_port"], dbname=cfg["pg_dbname"],
+                user=cfg["pg_user"], password=cfg["pg_password"],
+            )
+            conn.close()
+            self._db_status_lbl.config(text="Connection successful.", fg=ACCENT)
+        except Exception as e:
+            self._db_status_lbl.config(text=f"Connection failed: {e}", fg=RED)
 
     # ------------------------------------------------------------------
     # Presets panels
@@ -1082,7 +1265,8 @@ class ViewSettings:
 
     def _hide_all_settings_panels(self):
         for f in (self._settings_main_home_frame,
-                  self._settings_backup_frame, self._settings_presets_home_frame,
+                  self._settings_backup_frame, self._settings_database_frame,
+                  self._settings_presets_home_frame,
                   self._settings_categories_frame, self._settings_url_presets_frame,
                   self._settings_email_frame, self._settings_release_frame,
                   self._settings_testing_frame, self._settings_execution_frame,
@@ -1092,6 +1276,11 @@ class ViewSettings:
     def _show_settings_backup(self):
         self._hide_all_settings_panels()
         self._settings_backup_frame.pack(fill=tk.BOTH, expand=True)
+
+    def _show_settings_database(self):
+        self._hide_all_settings_panels()
+        self._refresh_database_panel()
+        self._settings_database_frame.pack(fill=tk.BOTH, expand=True)
 
     def _show_settings_automated(self):
         self._hide_all_settings_panels()
@@ -1139,6 +1328,7 @@ class ViewSettings:
 
     def _settings_show_first(self):
         self._hide_all_settings_panels()
+        self._relayout_settings_home_cards()
         self._settings_main_home_frame.pack(fill=tk.BOTH, expand=True)
 
 

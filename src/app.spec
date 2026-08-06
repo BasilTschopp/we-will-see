@@ -14,6 +14,8 @@ a = Analysis(
         "sqlite3",
         "cryptography",
         "cryptography.fernet",
+        "psycopg2",
+        "psycopg2.extras",
     ],
     hookspath=[],
     hooksconfig={},

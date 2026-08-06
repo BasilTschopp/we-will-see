@@ -56,7 +56,7 @@ def list_testcases_with_automated() -> list[tuple[str, bool]]:
     """Returns (name, automated) for every testcase, ordered by name."""
     conn = get_connection()
     rows = conn.execute(
-        "SELECT name, automated FROM testcases ORDER BY name COLLATE NOCASE"
+        "SELECT name, automated FROM testcases ORDER BY LOWER(name)"
     ).fetchall()
     return [(r["name"], bool(r["automated"])) for r in rows]
 
