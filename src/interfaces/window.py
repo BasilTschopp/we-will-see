@@ -7,10 +7,11 @@ from interfaces.style.style import apply_theme, color_titlebar
 from interfaces.view.testing   import ViewTesting
 from interfaces.view.recording import ViewRecording
 from interfaces.view.results   import ViewResults
+from interfaces.view.performance import ViewPerformance
 from interfaces.view.settings  import ViewSettings
 
 
-class App(ViewTesting, ViewRecording, ViewResults, ViewSettings):
+class App(ViewTesting, ViewRecording, ViewResults, ViewPerformance, ViewSettings):
 
     def __init__(self):
         self.root = tk.Tk()
@@ -49,10 +50,11 @@ class App(ViewTesting, ViewRecording, ViewResults, ViewSettings):
         self.nav_frame.grid_propagate(False)
         tk.Frame(self.nav_frame, bg=NAV_BG, height=12).pack()
 
-        for key, label in [("record",   "Recording"),
-                            ("testing",  "Testing"),
-                            ("results",  "Results"),
-                            ("settings", "Settings")]:
+        for key, label in [("record",      "Recording"),
+                            ("testing",     "Testing"),
+                            ("results",     "Results"),
+                            ("performance", "Performance"),
+                            ("settings",    "Settings")]:
             btn = tk.Label(
                 self.nav_frame, text=label, bg=NAV_BG, fg=NAV_FG,
                 font=(FONT, 11), anchor="w", padx=16, pady=10,
@@ -83,10 +85,12 @@ class App(ViewTesting, ViewRecording, ViewResults, ViewSettings):
         ViewTesting.build_sub(self, self.sub_container)
         ViewRecording.build_sub(self, self.sub_container)
         ViewResults.build_sub(self, self.sub_container)
+        ViewPerformance.build_sub(self, self.sub_container)
         ViewSettings.build_sub(self, self.sub_container)
         ViewTesting.build_content(self, self.content_frame)
         ViewRecording.build_content(self, self.content_frame)
         ViewResults.build_content(self, self.content_frame)
+        ViewPerformance.build_content(self, self.content_frame)
         ViewSettings.build_content(self, self.content_frame)
 
     def _show_section(self, section: str):
@@ -117,6 +121,10 @@ class App(ViewTesting, ViewRecording, ViewResults, ViewSettings):
             self.sub_results.pack(fill=tk.BOTH, expand=True)
             self.content_results.pack(fill=tk.BOTH, expand=True)
             self._refresh_results_list()
+        elif section == "performance":
+            self.sub_performance.pack(fill=tk.BOTH, expand=True)
+            self.content_performance.pack(fill=tk.BOTH, expand=True)
+            self._refresh_performance_list()
         elif section == "settings":
             self.sub_settings.pack(fill=tk.BOTH, expand=True)
             self.content_settings.pack(fill=tk.BOTH, expand=True)

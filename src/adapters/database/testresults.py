@@ -121,6 +121,55 @@ def fetch_username(run_name: str) -> str:
     return (row["username"] or "") if row else ""
 
 
+def _extract_tc_key(run_name: str) -> str:
+    parts = run_name.split(" - ", 2)
+    return parts[2] if len(parts) >= 3 else run_name
+
+
+def list_testcase_keys() -> list[str]:
+    """Distinct testcase keys derived from run_name (same grouping as 'Latest per testcase')."""
+    from adapters.database.connection import get_connection
+    conn = get_connection()
+    rows = conn.execute("SELECT DISTINCT run_name FROM testresults").fetchall()
+    keys = {_extract_tc_key(r["run_name"]) for r in rows}
+    return sorted(keys)
+
+
+def fetch_performance(tc_key: str) -> list[tuple[str, float]]:
+    """Returns (release, duration_seconds) for the most recent run of tc_key
+    in each release, ordered by release DESC. Duration is the timespan
+    between the first and last step of that run."""
+    from adapters.database.connection import get_connection
+    conn = get_connection()
+    rows = conn.execute("""
+        SELECT run_name, release, MIN(timestamp) AS t_min, MAX(timestamp) AS t_max
+        FROM testresults
+        WHERE release != ''
+        GROUP BY run_name
+        ORDER BY run_name DESC
+    """).fetchall()
+
+    latest_per_release: dict[str, tuple] = {}
+    for r in rows:
+        if _extract_tc_key(r["run_name"]) != tc_key:
+            continue
+        release = r["release"]
+        if release not in latest_per_release:
+            latest_per_release[release] = (r["t_min"], r["t_max"])
+
+    result = []
+    for release, (t_min, t_max) in latest_per_release.items():
+        try:
+            dt_min = datetime.strptime(t_min, "%Y-%m-%d %H:%M:%S")
+            dt_max = datetime.strptime(t_max, "%Y-%m-%d %H:%M:%S")
+            duration = (dt_max - dt_min).total_seconds()
+        except Exception:
+            duration = 0.0
+        result.append((release, duration))
+    result.sort(key=lambda x: x[0], reverse=True)
+    return result
+
+
 def delete_run(run_name: str) -> None:
     import os
     from adapters.database.connection import get_connection
