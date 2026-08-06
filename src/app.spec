@@ -6,6 +6,7 @@ a = Analysis(
     binaries=[],
     datas=[
         ("interfaces/style/style.yaml", "interfaces/style"),
+        ("interfaces/style/icon.ico", "interfaces/style"),
     ],
     hiddenimports=[
         "dotenv",
@@ -38,5 +39,5 @@ exe = EXE(
     strip=False,
     upx=True,
     console=False,
-    icon=None,
+    icon="interfaces/style/icon.ico",
 )

@@ -3,7 +3,7 @@ import tkinter as tk
 from core.core import NavigationResult
 from adapters.browser.driver import setup_logging
 from interfaces.style.style import BG, NAV_BG, NAV_FG, NAV_ACTIVE_BG, NAV_ACTIVE_FG, BORDER, SUB_BG, FONT
-from interfaces.style.style import apply_theme, color_titlebar
+from interfaces.style.style import apply_theme, color_titlebar, icon_path, set_taskbar_identity
 from interfaces.view.testing   import ViewTesting
 from interfaces.view.recording import ViewRecording
 from interfaces.view.results   import ViewResults
@@ -14,10 +14,15 @@ from interfaces.view.settings  import ViewSettings
 class App(ViewTesting, ViewRecording, ViewResults, ViewPerformance, ViewSettings):
 
     def __init__(self):
+        set_taskbar_identity()
         self.root = tk.Tk()
         from main import APP_VERSION
         self._app_version = APP_VERSION
         self.root.title("We Will See")
+        try:
+            self.root.iconbitmap(icon_path())
+        except Exception:
+            pass
         self.root.geometry("960x640")
         self.root.minsize(760, 480)
         self.root.resizable(True, True)

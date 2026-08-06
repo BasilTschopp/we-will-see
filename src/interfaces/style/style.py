@@ -11,6 +11,12 @@ def _style_path() -> str:
     return os.path.join(os.path.dirname(os.path.abspath(__file__)), "style.yaml")
 
 
+def icon_path() -> str:
+    if getattr(sys, "frozen", False):
+        return os.path.join(sys._MEIPASS, "interfaces", "style", "icon.ico")
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "icon.ico")
+
+
 def _load() -> dict:
     try:
         with open(_style_path(), "r", encoding="utf-8") as f:
@@ -78,6 +84,20 @@ def apply_theme():
     s.map("SubList.Treeview",
           background=[("selected", SUB_SEL_BG)],
           foreground=[("selected", SUB_SEL_FG)])
+
+
+def set_taskbar_identity():
+    """Gives this process its own Application User Model ID so Windows uses
+    the window's own icon for the taskbar button instead of falling back to
+    pythonw.exe's generic script icon."""
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+            "wewillsee.testautomation.app.v1")
+    except Exception:
+        pass
 
 
 def color_titlebar(root: tk.Tk):
