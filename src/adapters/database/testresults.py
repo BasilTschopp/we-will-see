@@ -135,10 +135,13 @@ def list_testcase_keys() -> list[str]:
     return sorted(keys)
 
 
-def fetch_performance(tc_key: str) -> list[tuple[str, float]]:
-    """Returns (release, duration_seconds) for the most recent run of tc_key
-    in each release, ordered by release DESC. Duration is the timespan
-    between the first and last step of that run."""
+def fetch_performance(tc_key: str) -> list[tuple[str, float, float | None, float | None]]:
+    """Returns (release, duration_seconds, pct_vs_previous, pct_vs_first) for the
+    most recent run of tc_key in each release, ordered by release DESC. Duration
+    is the timespan between the first and last step of that run. pct_vs_previous
+    is the % change vs. the chronologically previous release (None for the
+    oldest); pct_vs_first is the % change vs. the oldest release (None if the
+    oldest release's duration is 0)."""
     from adapters.database.connection import get_connection
     conn = get_connection()
     rows = conn.execute("""
@@ -157,7 +160,7 @@ def fetch_performance(tc_key: str) -> list[tuple[str, float]]:
         if release not in latest_per_release:
             latest_per_release[release] = (r["t_min"], r["t_max"])
 
-    result = []
+    durations = []
     for release, (t_min, t_max) in latest_per_release.items():
         try:
             dt_min = datetime.strptime(t_min, "%Y-%m-%d %H:%M:%S")
@@ -165,8 +168,21 @@ def fetch_performance(tc_key: str) -> list[tuple[str, float]]:
             duration = (dt_max - dt_min).total_seconds()
         except Exception:
             duration = 0.0
-        result.append((release, duration))
-    result.sort(key=lambda x: x[0], reverse=True)
+        durations.append((release, duration))
+    durations.sort(key=lambda x: x[0])  # ascending: oldest first
+
+    first_duration = durations[0][1] if durations else 0.0
+    result: list[tuple[str, float, float | None, float | None]] = []
+    prev_duration = None
+    for release, duration in durations:
+        pct_prev = ((duration - prev_duration) / prev_duration * 100
+                    if prev_duration else None)
+        pct_first = ((duration - first_duration) / first_duration * 100
+                     if first_duration else None)
+        result.append((release, duration, pct_prev, pct_first))
+        prev_duration = duration
+
+    result.reverse()  # newest first for display
     return result
 
 

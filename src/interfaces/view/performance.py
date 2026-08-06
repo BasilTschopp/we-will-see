@@ -1,7 +1,7 @@
 import tkinter as tk
 from tkinter import ttk
 
-from interfaces.style.style import BG, BG2, FG, FONT
+from interfaces.style.style import BG, BG2, FG, FONT, RED
 
 
 class ViewPerformance:
@@ -36,12 +36,16 @@ class ViewPerformance:
         tree_frame.pack(fill=tk.BOTH, expand=True)
 
         self.performance_tree = ttk.Treeview(
-            tree_frame, columns=("release", "duration"),
+            tree_frame, columns=("release", "duration", "vs_prev", "vs_first"),
             show="headings", selectmode="browse")
         self.performance_tree.heading("release",  text="Release")
-        self.performance_tree.heading("duration", text="Gesamtdauer")
-        self.performance_tree.column("release",  width=200, minwidth=100, anchor="w")
-        self.performance_tree.column("duration", width=120, minwidth=80, stretch=False, anchor="e")
+        self.performance_tree.heading("duration", text="Total Duration")
+        self.performance_tree.heading("vs_prev",  text="Previous")
+        self.performance_tree.heading("vs_first", text="First Release")
+        self.performance_tree.column("release",  width=160, minwidth=100, anchor="w")
+        self.performance_tree.column("duration", width=100, minwidth=80, stretch=False, anchor="e")
+        self.performance_tree.column("vs_prev",  width=110, minwidth=80, stretch=False, anchor="e")
+        self.performance_tree.column("vs_first", width=130, minwidth=80, stretch=False, anchor="e")
         self.performance_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
         sb = ttk.Scrollbar(tree_frame, orient="vertical",
@@ -49,6 +53,7 @@ class ViewPerformance:
         sb.pack(side=tk.RIGHT, fill=tk.Y)
         self.performance_tree.configure(yscrollcommand=sb.set)
         self.performance_tree.tag_configure("stripe", background=BG2)
+        self.performance_tree.tag_configure("alert", foreground=RED)
 
     # ------------------------------------------------------------------
     # Data
@@ -84,15 +89,29 @@ class ViewPerformance:
         self.performance_title.configure(text=tc_key)
 
         from adapters.database.testresults import fetch_performance
+        from adapters.database.settings import (
+            get_performance_threshold_prev, get_performance_threshold_first,
+        )
+        threshold_prev  = get_performance_threshold_prev()
+        threshold_first = get_performance_threshold_first()
         data = fetch_performance(tc_key)
 
         self.performance_tree.delete(*self.performance_tree.get_children())
-        for idx, (release, duration) in enumerate(data):
-            tags = ("stripe",) if idx % 2 == 1 else ()
+        for idx, (release, duration, pct_prev, pct_first) in enumerate(data):
+            alert = (
+                (threshold_prev > 0 and pct_prev is not None and pct_prev >= threshold_prev)
+                or (threshold_first > 0 and pct_first is not None and pct_first >= threshold_first)
+            )
+            tags = []
+            if idx % 2 == 1:
+                tags.append("stripe")
+            if alert:
+                tags.append("alert")
             self.performance_tree.insert(
                 "", tk.END,
-                values=(release, _format_duration(duration)),
-                tags=tags)
+                values=(release, _format_duration(duration),
+                       _format_pct(pct_prev), _format_pct(pct_first)),
+                tags=tuple(tags))
 
 
 def _format_duration(seconds: float) -> str:
@@ -102,3 +121,10 @@ def _format_duration(seconds: float) -> str:
     if h:
         return f"{h}:{m:02d}:{s:02d}"
     return f"{m}:{s:02d}"
+
+
+def _format_pct(pct: float | None) -> str:
+    if pct is None:
+        return "–"
+    sign = "+" if pct >= 0 else ""
+    return f"{sign}{pct:.1f}%"

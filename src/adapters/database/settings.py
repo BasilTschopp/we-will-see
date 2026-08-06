@@ -120,3 +120,25 @@ def set_parallel_execution(value: bool) -> None:
     set_setting("parallel_execution", "1" if value else "0")
 
 
+def get_performance_threshold_prev() -> float:
+    try:
+        return max(0.0, float(get_setting("performance_threshold_prev", "0")))
+    except ValueError:
+        return 0.0
+
+
+def set_performance_threshold_prev(percent: float) -> None:
+    set_setting("performance_threshold_prev", str(max(0.0, percent)))
+
+
+def get_performance_threshold_first() -> float:
+    try:
+        return max(0.0, float(get_setting("performance_threshold_first", "0")))
+    except ValueError:
+        return 0.0
+
+
+def set_performance_threshold_first(percent: float) -> None:
+    set_setting("performance_threshold_first", str(max(0.0, percent)))
+
+

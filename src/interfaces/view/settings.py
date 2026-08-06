@@ -26,6 +26,7 @@ class ViewSettings:
         self._settings_testing_frame      = self._build_testing_panel(self.content_settings)
         self._settings_execution_frame    = self._build_execution_panel(self.content_settings)
         self._settings_automated_frame    = self._build_automated_panel(self.content_settings)
+        self._settings_performance_frame  = self._build_performance_panel(self.content_settings)
 
     # ------------------------------------------------------------------
     # Main home panel (all settings cards, alphabetically)
@@ -49,6 +50,7 @@ class ViewSettings:
 
         def _on_canvas_configure(event):
             canvas.itemconfig(canvas_window, width=event.width)
+            _relayout_cards(event.width)
 
         inner.bind("<Configure>", _on_inner_configure)
         canvas.bind("<Configure>", _on_canvas_configure)
@@ -61,28 +63,65 @@ class ViewSettings:
                  font=(FONT, 13, "bold"), anchor="w").pack(anchor="w", pady=(0, 4))
         tk.Frame(pad, bg=BORDER, height=1).pack(fill=tk.X, pady=(0, 20))
 
+        grid_frame = tk.Frame(pad, bg=BG)
+        grid_frame.pack(fill=tk.BOTH, expand=True)
+
+        cards: list[tk.Frame] = []
+        CARD_MIN_WIDTH = 340
+        CARD_MAX_COLS  = 3
+
         def _card(title, desc, command):
-            card = tk.Frame(pad, bg=BG2, cursor="hand2",
+            card = tk.Frame(grid_frame, bg=BG2, cursor="hand2",
                             highlightthickness=1, highlightbackground=BORDER)
-            card.pack(fill=tk.X, pady=(0, 10))
             card_inner = tk.Frame(card, bg=BG2)
             card_inner.pack(fill=tk.X, padx=16, pady=12)
+
             tk.Label(card_inner, text=title, bg=BG2, fg=FG,
                      font=(FONT, 11, "bold"), anchor="w").pack(anchor="w")
             tk.Label(card_inner, text=desc, bg=BG2, fg=FG_SEC,
-                     font=(FONT, 10), anchor="w").pack(anchor="w", pady=(2, 0))
-            for w in [card, card_inner] + list(card_inner.winfo_children()):
+                     font=(FONT, 9), anchor="w", wraplength=280,
+                     justify="left").pack(anchor="w", pady=(2, 0))
+
+            def _on_enter(_=None):
+                card.configure(highlightbackground=ACCENT)
+            def _on_leave(_=None):
+                card.configure(highlightbackground=BORDER)
+
+            widgets = [card, card_inner] + list(card_inner.winfo_children())
+            for w in widgets:
                 w.bind("<Button-1>", lambda _, cmd=command: cmd())
                 w.bind("<MouseWheel>", lambda e: canvas.yview_scroll(-1 * (e.delta // 120), "units"))
+                w.bind("<Enter>", _on_enter)
+                w.bind("<Leave>", _on_leave)
+
+            cards.append(card)
 
         _card("Automated",            "Choose which testcases run via --automated.",                self._show_settings_automated)
         _card("Backup",               "Save or restore the database.",                              self._show_settings_backup)
         _card("Categories",           "Manage categories for assigning testcases.",                 self._show_settings_categories)
         _card("E-Mail Alerts",        "SMTP settings for automated test failure alerts.",           self._show_settings_email_panel)
         _card("Error Page Detection", "Keywords checked in the page title to detect error pages.",  self._show_settings_error_page_detection)
+        _card("Performance",          "Thresholds for highlighting slow testcase runs.",            self._show_settings_performance)
         _card("Release Detection",    "CSS selector and regex for the release number.",              self._show_settings_release)
         _card("Testing",              "Execution settings applied to every testcase run.",          self._show_settings_execution)
         _card("URL Presets",          "Saved URLs with login credentials.",                         self._show_settings_url_presets)
+
+        def _relayout_cards(width: int):
+            avail = max(width - 48, 200)
+            cols  = max(1, min(CARD_MAX_COLS, avail // CARD_MIN_WIDTH))
+            if getattr(grid_frame, "_current_cols", None) == cols:
+                return
+            grid_frame._current_cols = cols
+            for c in cards:
+                c.grid_forget()
+            for col in range(CARD_MAX_COLS):
+                grid_frame.columnconfigure(col, weight=1 if col < cols else 0,
+                                           uniform="cards" if col < cols else "")
+            for i, c in enumerate(cards):
+                r, col = divmod(i, cols)
+                c.grid(row=r, column=col, sticky="nsew", padx=6, pady=6)
+
+        _relayout_cards(canvas.winfo_reqwidth() or 700)
 
         return frame
 
@@ -959,13 +998,95 @@ class ViewSettings:
         self._exec_step_timeout_entry.insert(0, str(st))
         self._exec_status_lbl.config(text="Saved.", fg=ACCENT)
 
+    # ------------------------------------------------------------------
+    # Performance panel (highlight thresholds)
+    # ------------------------------------------------------------------
+
+    def _build_performance_panel(self, parent: tk.Frame) -> tk.Frame:
+        frame = tk.Frame(parent, bg=BG)
+        inner = tk.Frame(frame, bg=BG)
+        inner.pack(fill=tk.BOTH, expand=True, padx=24, pady=24)
+
+        tk.Label(inner, text="Performance", bg=BG, fg=FG,
+                 font=(FONT, 13, "bold"), anchor="w").pack(anchor="w", pady=(0, 4))
+        tk.Frame(inner, bg=BORDER, height=1).pack(fill=tk.X, pady=(0, 10))
+
+        tk.Label(inner,
+                 text="A testcase is highlighted in red on the Performance tab "
+                      "when its runtime is at least the given percentage "
+                      "longer. 0 = disabled.",
+                 bg=BG, fg=FG_SEC, font=(FONT, 10), anchor="w",
+                 wraplength=520, justify="left").pack(anchor="w", pady=(0, 14))
+
+        def _row(label, unit):
+            row = tk.Frame(inner, bg=BG)
+            row.pack(fill=tk.X, pady=4)
+            tk.Label(row, text=label, bg=BG, fg=FG_SEC,
+                     font=(FONT, 10), width=28, anchor="w").pack(side=tk.LEFT)
+            e = tk.Entry(row, bg=BG2, fg=FG, font=(FONT, 10),
+                         insertbackground=ACCENT, relief="flat",
+                         highlightthickness=1, highlightbackground=BORDER, width=8)
+            e.pack(side=tk.LEFT, ipady=4)
+            tk.Label(row, text=unit, bg=BG, fg=FG_SEC,
+                     font=(FONT, 10)).pack(side=tk.LEFT, padx=(6, 0))
+            return e
+
+        self._perf_threshold_prev_entry  = _row("Slower than previous release", "%")
+        self._perf_threshold_first_entry = _row("Slower than first release",    "%")
+
+        btn_row = tk.Frame(inner, bg=BG)
+        btn_row.pack(anchor="w", pady=(18, 0))
+
+        save_btn = tk.Label(btn_row, text="Save", bg=ACCENT, fg="#ffffff",
+                            font=(FONT, 10, "bold"), cursor="hand2", padx=12, pady=6)
+        save_btn.pack(side=tk.LEFT)
+        save_btn.bind("<Button-1>", lambda _: self._on_performance_settings_save())
+
+        self._perf_settings_status_lbl = tk.Label(inner, text="", bg=BG, fg=FG_SEC,
+                                                   font=(FONT, 10), anchor="w")
+        self._perf_settings_status_lbl.pack(anchor="w", pady=(8, 0))
+
+        return frame
+
+    def _refresh_performance_panel(self):
+        from adapters.database.settings import (
+            get_performance_threshold_prev, get_performance_threshold_first,
+        )
+        self._perf_threshold_prev_entry.delete(0, tk.END)
+        self._perf_threshold_prev_entry.insert(0, _fmt_pct_setting(get_performance_threshold_prev()))
+        self._perf_threshold_first_entry.delete(0, tk.END)
+        self._perf_threshold_first_entry.insert(0, _fmt_pct_setting(get_performance_threshold_first()))
+        self._perf_settings_status_lbl.config(text="")
+
+    def _on_performance_settings_save(self):
+        from adapters.database.settings import (
+            set_performance_threshold_prev, set_performance_threshold_first,
+        )
+        try:
+            prev_pct = max(0.0, float(
+                self._perf_threshold_prev_entry.get().strip().replace(",", ".") or "0"))
+        except ValueError:
+            prev_pct = 0.0
+        try:
+            first_pct = max(0.0, float(
+                self._perf_threshold_first_entry.get().strip().replace(",", ".") or "0"))
+        except ValueError:
+            first_pct = 0.0
+        set_performance_threshold_prev(prev_pct)
+        set_performance_threshold_first(first_pct)
+        self._perf_threshold_prev_entry.delete(0, tk.END)
+        self._perf_threshold_prev_entry.insert(0, _fmt_pct_setting(prev_pct))
+        self._perf_threshold_first_entry.delete(0, tk.END)
+        self._perf_threshold_first_entry.insert(0, _fmt_pct_setting(first_pct))
+        self._perf_settings_status_lbl.config(text="Saved.", fg=ACCENT)
+
     def _hide_all_settings_panels(self):
         for f in (self._settings_main_home_frame,
                   self._settings_backup_frame, self._settings_presets_home_frame,
                   self._settings_categories_frame, self._settings_url_presets_frame,
                   self._settings_email_frame, self._settings_release_frame,
                   self._settings_testing_frame, self._settings_execution_frame,
-                  self._settings_automated_frame):
+                  self._settings_automated_frame, self._settings_performance_frame):
             f.pack_forget()
 
     def _show_settings_backup(self):
@@ -997,6 +1118,11 @@ class ViewSettings:
         self._refresh_execution_panel()
         self._settings_execution_frame.pack(fill=tk.BOTH, expand=True)
 
+    def _show_settings_performance(self):
+        self._hide_all_settings_panels()
+        self._refresh_performance_panel()
+        self._settings_performance_frame.pack(fill=tk.BOTH, expand=True)
+
     def _show_settings_presets_home(self):
         self._hide_all_settings_panels()
         self._settings_presets_home_frame.pack(fill=tk.BOTH, expand=True)
@@ -1014,3 +1140,7 @@ class ViewSettings:
     def _settings_show_first(self):
         self._hide_all_settings_panels()
         self._settings_main_home_frame.pack(fill=tk.BOTH, expand=True)
+
+
+def _fmt_pct_setting(value: float) -> str:
+    return str(int(value)) if value == int(value) else str(value)
