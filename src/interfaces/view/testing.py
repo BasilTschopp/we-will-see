@@ -1,7 +1,7 @@
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog
 
-from interfaces.style.style import BG, BG2, FG, FG_SEC, ACCENT, BLUE, NAV_BG, RED, BORDER, FONT, MONO
+from interfaces.style.style import BG, BG2, FG, FG_SEC, ACCENT, BLUE, RED, BORDER, FONT, MONO
 from interfaces.helper.widgets import add_tooltip
 from interfaces.helper.utils import get_categories
 
@@ -135,18 +135,6 @@ class ViewTesting:
         footer = tk.Frame(editor_frame, bg=BG)
         self._footer_frame = footer
         footer.pack(fill=tk.X, pady=(4, 0))
-
-        self._automated_var = tk.BooleanVar()
-        self._screenshot_on_error_var = tk.BooleanVar()
-        self._tc_run_timeout    = 0
-        self._tc_step_timeout   = 0
-        self._tc_stop_on_error  = False
-
-        self._settings_btn = tk.Label(footer, text="🔧", bg=BG, fg=FG,
-                                      font=(FONT, 13), cursor="hand2")
-        self._settings_btn.pack(side=tk.LEFT, padx=(4, 0))
-        self._settings_btn.bind("<Button-1>", lambda _: self._on_tc_settings())
-        add_tooltip(self._settings_btn, "Testcase Settings")
 
         self._search_matches: list = []
         self._search_idx:     int  = -1
@@ -359,150 +347,13 @@ class ViewTesting:
     # ------------------------------------------------------------------
 
     def _load_into_editor(self, name: str):
-        from adapters.database.testcases import (
-            fetch_testcase_yaml, fetch_automated,
-            fetch_screenshot_on_error, fetch_run_timeout, fetch_step_timeout,
-            fetch_stop_on_error,
-        )
+        from adapters.database.testcases import fetch_testcase_yaml
         yaml_text, _ = fetch_testcase_yaml(name)
         self.editor.delete("1.0", tk.END)
         self.editor.insert("1.0", yaml_text)
         self.editor.edit_modified(False)
         self._current_tc_name = name
         self.editor_title.configure(text=name, fg=FG)
-        self._automated_var.set(fetch_automated(name))
-        self._screenshot_on_error_var.set(fetch_screenshot_on_error(name))
-        self._tc_run_timeout   = fetch_run_timeout(name)
-        self._tc_step_timeout  = fetch_step_timeout(name)
-        self._tc_stop_on_error = fetch_stop_on_error(name)
-        self._refresh_settings_icon()
-
-    def _on_tc_settings(self):
-        if not self._current_tc_name:
-            return
-        popup = tk.Toplevel(self.root)
-        popup.withdraw()
-        popup.overrideredirect(True)
-        popup.configure(bg=BORDER)
-        popup.transient(self.root)
-
-        inner = tk.Frame(popup, bg=BG)
-        inner.pack(fill=tk.BOTH, expand=True, padx=1, pady=1)
-
-        header = tk.Label(inner, text="Testcase Settings", bg=NAV_BG, fg="#ffffff",
-                          font=(FONT, 10, "bold"), anchor="w",
-                          padx=14, pady=10, cursor="fleur")
-        header.pack(fill=tk.X)
-
-        def _start_drag(e):
-            popup._drag_x = e.x_root - popup.winfo_x()
-            popup._drag_y = e.y_root - popup.winfo_y()
-
-        def _drag(e):
-            popup.geometry(f"+{e.x_root - popup._drag_x}+{e.y_root - popup._drag_y}")
-
-        header.bind("<ButtonPress-1>", _start_drag)
-        header.bind("<B1-Motion>",     _drag)
-
-        body = tk.Frame(inner, bg=BG)
-        body.pack(fill=tk.X, padx=14, pady=(10, 4))
-
-        tc_name = self._current_tc_name
-
-        auto_var          = tk.BooleanVar(value=self._automated_var.get())
-        sce_var           = tk.BooleanVar(value=self._screenshot_on_error_var.get())
-        stop_on_error_var = tk.BooleanVar(value=self._tc_stop_on_error)
-
-        def _save_to_db():
-            from adapters.database.testcases import (
-                update_automated, update_screenshot_on_error,
-                update_run_timeout, update_step_timeout,
-                update_stop_on_error,
-            )
-            update_automated(tc_name, auto_var.get())
-            update_screenshot_on_error(tc_name, sce_var.get())
-            update_stop_on_error(tc_name, stop_on_error_var.get())
-            try:
-                rt = max(0, int(run_timeout_entry.get().strip() or "0"))
-            except ValueError:
-                rt = 0
-            try:
-                st = max(0, int(step_timeout_entry.get().strip() or "0"))
-            except ValueError:
-                st = 0
-            update_run_timeout(tc_name, rt)
-            update_step_timeout(tc_name, st)
-            self._automated_var.set(auto_var.get())
-            self._screenshot_on_error_var.set(sce_var.get())
-            self._tc_run_timeout   = rt
-            self._tc_step_timeout  = st
-            self._tc_stop_on_error = stop_on_error_var.get()
-            self._refresh_settings_icon()
-
-        tk.Checkbutton(
-            body, text="Automated", variable=auto_var,
-            bg=BG, fg=FG, selectcolor=BG,
-            activebackground=BG, activeforeground=ACCENT,
-            font=(FONT, 9), command=_save_to_db,
-        ).pack(anchor="w")
-
-        tk.Checkbutton(
-            body, text="Screenshot on Error", variable=sce_var,
-            bg=BG, fg=FG, selectcolor=BG,
-            activebackground=BG, activeforeground=ACCENT,
-            font=(FONT, 9), command=_save_to_db,
-        ).pack(anchor="w", pady=(4, 0))
-
-        tk.Checkbutton(
-            body, text="Stop on Error", variable=stop_on_error_var,
-            bg=BG, fg=FG, selectcolor=BG,
-            activebackground=BG, activeforeground=ACCENT,
-            font=(FONT, 9), command=_save_to_db,
-        ).pack(anchor="w", pady=(4, 0))
-
-        tk.Frame(inner, bg=BORDER, height=1).pack(fill=tk.X, pady=(10, 6))
-
-        def _timeout_row(label, unit, default_val):
-            row = tk.Frame(body, bg=BG)
-            row.pack(fill=tk.X, pady=2)
-            tk.Label(row, text=label, bg=BG, fg=FG_SEC,
-                     font=(FONT, 9), width=14, anchor="w").pack(side=tk.LEFT)
-            e = tk.Entry(row, bg=BG2, fg=FG, font=(FONT, 9),
-                         insertbackground=ACCENT, relief="flat",
-                         highlightthickness=1, highlightbackground=BORDER, width=5)
-            e.insert(0, str(default_val))
-            e.pack(side=tk.LEFT, ipady=3)
-            e.bind("<FocusOut>", lambda _: _save_to_db())
-            tk.Label(row, text=unit, bg=BG, fg=FG_SEC,
-                     font=(FONT, 9)).pack(side=tk.LEFT, padx=(5, 0))
-            return e
-
-        run_timeout_entry  = _timeout_row("Run Timeout",  "min", self._tc_run_timeout)
-        step_timeout_entry = _timeout_row("Step Timeout", "s",   self._tc_step_timeout)
-
-        tk.Frame(inner, bg=BORDER, height=1).pack(fill=tk.X, pady=(10, 0))
-
-        btn_row = tk.Frame(inner, bg=BG)
-        btn_row.pack(fill=tk.X, padx=14, pady=10)
-
-        close_lbl = tk.Label(btn_row, text="Close", bg=BG, fg=FG_SEC,
-                             font=(FONT, 9), cursor="hand2")
-        close_lbl.pack(side=tk.RIGHT)
-        close_lbl.bind("<Button-1>", lambda _: popup.destroy())
-
-        popup.update_idletasks()
-        pw = popup.winfo_reqwidth()
-        ph = popup.winfo_reqheight()
-        x = self.root.winfo_rootx() + (self.root.winfo_width() - pw) // 2
-        y = self.root.winfo_rooty() + (self.root.winfo_height() - ph) // 2
-        popup.geometry(f"{pw}x{ph}+{x}+{y}")
-        popup.deiconify()
-        popup.grab_set()
-        popup.lift()
-        popup.focus_force()
-
-    def _refresh_settings_icon(self):
-        self._settings_btn.configure(fg=FG)
 
     def _on_save(self):
         if not self._current_tc_name:

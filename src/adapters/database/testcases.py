@@ -35,86 +35,10 @@ def fetch_comment(name: str) -> str:
     return str(row["comment"] or "") if row else ""
 
 
-def fetch_automated(name: str) -> bool:
-    conn = get_connection()
-    row = conn.execute(
-        "SELECT automated FROM testcases WHERE name = ?", (name,)
-    ).fetchone()
-    return bool(row["automated"]) if row else False
-
-
 def update_automated(name: str, value: bool) -> None:
     conn = get_connection()
     conn.execute(
         "UPDATE testcases SET automated = ? WHERE name = ?",
-        (1 if value else 0, name)
-    )
-    conn.commit()
-
-
-def fetch_screenshot_on_error(name: str) -> bool:
-    conn = get_connection()
-    row = conn.execute(
-        "SELECT screenshot_on_error FROM testcases WHERE name = ?", (name,)
-    ).fetchone()
-    return bool(row["screenshot_on_error"]) if row else False
-
-
-def update_screenshot_on_error(name: str, value: bool) -> None:
-    conn = get_connection()
-    conn.execute(
-        "UPDATE testcases SET screenshot_on_error = ? WHERE name = ?",
-        (1 if value else 0, name)
-    )
-    conn.commit()
-
-
-def fetch_run_timeout(name: str) -> int:
-    conn = get_connection()
-    row = conn.execute(
-        "SELECT run_timeout FROM testcases WHERE name = ?", (name,)
-    ).fetchone()
-    return int(row["run_timeout"]) if row else 0
-
-
-def update_run_timeout(name: str, minutes: int) -> None:
-    conn = get_connection()
-    conn.execute(
-        "UPDATE testcases SET run_timeout = ? WHERE name = ?",
-        (max(0, minutes), name)
-    )
-    conn.commit()
-
-
-def fetch_step_timeout(name: str) -> int:
-    conn = get_connection()
-    row = conn.execute(
-        "SELECT step_timeout FROM testcases WHERE name = ?", (name,)
-    ).fetchone()
-    return int(row["step_timeout"]) if row else 0
-
-
-def update_step_timeout(name: str, seconds: int) -> None:
-    conn = get_connection()
-    conn.execute(
-        "UPDATE testcases SET step_timeout = ? WHERE name = ?",
-        (max(0, seconds), name)
-    )
-    conn.commit()
-
-
-def fetch_stop_on_error(name: str) -> bool:
-    conn = get_connection()
-    row = conn.execute(
-        "SELECT stop_on_error FROM testcases WHERE name = ?", (name,)
-    ).fetchone()
-    return bool(row["stop_on_error"]) if row else False
-
-
-def update_stop_on_error(name: str, value: bool) -> None:
-    conn = get_connection()
-    conn.execute(
-        "UPDATE testcases SET stop_on_error = ? WHERE name = ?",
         (1 if value else 0, name)
     )
     conn.commit()
@@ -126,6 +50,15 @@ def list_automated_testcases() -> list[str]:
         "SELECT name FROM testcases WHERE automated = 1 ORDER BY updated DESC"
     ).fetchall()
     return [r["name"] for r in rows]
+
+
+def list_testcases_with_automated() -> list[tuple[str, bool]]:
+    """Returns (name, automated) for every testcase, ordered by name."""
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT name, automated FROM testcases ORDER BY name COLLATE NOCASE"
+    ).fetchall()
+    return [(r["name"], bool(r["automated"])) for r in rows]
 
 
 def list_testcases() -> list[tuple[str, str]]:

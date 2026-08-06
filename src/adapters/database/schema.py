@@ -15,10 +15,6 @@ def create_tables():
             category            TEXT    NOT NULL DEFAULT '',
             yaml_text           TEXT    NOT NULL DEFAULT '',
             automated           INTEGER NOT NULL DEFAULT 0,
-            screenshot_on_error INTEGER NOT NULL DEFAULT 0,
-            run_timeout         INTEGER NOT NULL DEFAULT 0,
-            step_timeout        INTEGER NOT NULL DEFAULT 0,
-            stop_on_error       INTEGER NOT NULL DEFAULT 0,
             created             TEXT    NOT NULL DEFAULT (datetime('now')),
             updated             TEXT    NOT NULL DEFAULT (datetime('now'))
         );
@@ -73,13 +69,6 @@ def create_tables():
         conn.commit()
     except Exception:
         pass
-    # migration: add screenshot_on_error column to testcases
-    try:
-        conn.execute(
-            "ALTER TABLE testcases ADD COLUMN screenshot_on_error INTEGER NOT NULL DEFAULT 0")
-        conn.commit()
-    except Exception:
-        pass
     # migration: add screenshot_path column to testresults
     try:
         conn.execute(
@@ -94,20 +83,19 @@ def create_tables():
         conn.commit()
     except Exception:
         pass
-    # migration: add run_timeout, step_timeout and stop_on_error columns to testcases
-    for col in ("run_timeout INTEGER NOT NULL DEFAULT 0",
-                "step_timeout INTEGER NOT NULL DEFAULT 0",
-                "stop_on_error INTEGER NOT NULL DEFAULT 0"):
-        try:
-            conn.execute(f"ALTER TABLE testcases ADD COLUMN {col}")
-            conn.commit()
-        except Exception:
-            pass
     # migration: rename created_at/updated_at to created/updated on testcases
     for old, new in (("created_at", "created"), ("updated_at", "updated")):
         try:
             conn.execute(
                 f"ALTER TABLE testcases RENAME COLUMN {old} TO {new}")
+            conn.commit()
+        except Exception:
+            pass
+    # migration: execution settings (screenshot_on_error, run_timeout,
+    # step_timeout, stop_on_error) moved from per-testcase to global settings
+    for col in ("screenshot_on_error", "run_timeout", "step_timeout", "stop_on_error"):
+        try:
+            conn.execute(f"ALTER TABLE testcases DROP COLUMN {col}")
             conn.commit()
         except Exception:
             pass

@@ -173,7 +173,11 @@ def _expand_matrix(matrix: dict) -> list[tuple[dict, str]]:
 
 
 def run_test(app, tc_names: list[str], headless: bool = True):
-    _run_sequential(app, tc_names, headless)
+    from adapters.database.settings import get_parallel_execution
+    if len(tc_names) > 1 and get_parallel_execution():
+        _run_parallel(app, tc_names, headless)
+    else:
+        _run_sequential(app, tc_names, headless)
 
 
 def _run_sequential(app, tc_names: list[str], headless: bool):
@@ -181,6 +185,10 @@ def _run_sequential(app, tc_names: list[str], headless: bool):
     from adapters.browser.driver import start_browser, quit_browser
     from adapters.browser.login import login
     from adapters.database.testresults import save_results
+    from adapters.database.settings import (
+        get_screenshot_on_error, get_stop_on_error,
+        get_run_timeout, get_step_timeout,
+    )
 
     _timeout_timer = None
     try:
@@ -190,10 +198,10 @@ def _run_sequential(app, tc_names: list[str], headless: bool):
         username = ""
         password = ""
         private = False
-        screenshot_on_error = False
-        run_timeout    = 0
-        step_timeout   = 0
-        stop_on_error  = False
+        screenshot_on_error = get_screenshot_on_error()
+        stop_on_error       = get_stop_on_error()
+        run_timeout         = get_run_timeout()
+        step_timeout        = get_step_timeout()
         merged_matrix: dict = {}
         merged_meta: dict = {}
 
@@ -207,18 +215,6 @@ def _run_sequential(app, tc_names: list[str], headless: bool):
             if meta.get("username"): username     = str(meta["username"]).strip()
             if meta.get("password"): password     = str(meta["password"]).strip()
             if meta.get("private"):  private      = bool(meta["private"])
-            from adapters.database.testcases import (
-                fetch_screenshot_on_error as _fetch_sce,
-                fetch_run_timeout as _fetch_rt,
-                fetch_step_timeout as _fetch_st,
-                fetch_stop_on_error as _fetch_soe,
-            )
-            if _fetch_sce(name):
-                screenshot_on_error = True
-            run_timeout  = max(run_timeout,  _fetch_rt(name))
-            step_timeout = max(step_timeout, _fetch_st(name))
-            if _fetch_soe(name):
-                stop_on_error = True
 
         if not url:
             log.error("No URL found in YAML meta.")
@@ -294,6 +290,132 @@ def _run_sequential(app, tc_names: list[str], headless: bool):
         app.root.after(0, app._set_running, False)
 
 
+def _run_parallel(app, tc_names: list[str], headless: bool):
+    """Runs each selected testcase in its own browser session, concurrently."""
+    import threading
+    from adapters.database.settings import (
+        get_screenshot_on_error, get_stop_on_error,
+        get_run_timeout, get_step_timeout,
+    )
+
+    screenshot_on_error = get_screenshot_on_error()
+    stop_on_error       = get_stop_on_error()
+    run_timeout         = get_run_timeout()
+    step_timeout        = get_step_timeout()
+
+    app.results = []
+    app.drivers = []
+    results_lock = threading.Lock()
+
+    threads = [
+        threading.Thread(
+            target=_run_single_tc_parallel,
+            args=(app, name, headless, screenshot_on_error, stop_on_error,
+                  run_timeout, step_timeout, results_lock),
+            daemon=True)
+        for name in tc_names
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    app.driver  = None
+    app.running = False
+    app.root.after(0, app._set_running, False)
+
+
+def _run_single_tc_parallel(app, name: str, headless: bool,
+                            screenshot_on_error: bool, stop_on_error: bool,
+                            run_timeout: int, step_timeout: int,
+                            results_lock) -> None:
+    import threading
+    from adapters.browser.driver import start_browser, quit_browser
+    from adapters.browser.login import login
+    from adapters.database.testresults import save_results
+
+    stop_event = threading.Event()
+    timer  = None
+    driver = None
+    try:
+        items, meta = load_testcases(name)
+        url          = meta.get("url", "")
+        browser_name = (meta.get("browser") or "chrome").strip().lower()
+        username     = str(meta.get("username", "")).strip()
+        password     = str(meta.get("password", "")).strip()
+        private      = bool(meta.get("private", False))
+
+        if not url:
+            log.error(f"No URL found in YAML meta for '{name}'.")
+            return
+        if browser_name not in ("chrome", "edge", "firefox"):
+            browser_name = "chrome"
+
+        if run_timeout > 0:
+            timer = threading.Timer(run_timeout * 60, stop_event.set)
+            timer.daemon = True
+            timer.start()
+
+        driver = start_browser(headless=headless, browser=browser_name, private=private)
+        with results_lock:
+            app.drivers.append(driver)
+
+        if not app.running:
+            return
+        login(driver, url, username, password)
+        dismiss_cookie_banner(driver)
+        if not app.running:
+            return
+
+        release = _read_release_from_page(driver)
+        matrix  = dict(meta.get("matrix") or {})
+        matrix.pop("parallel", None)  # clean up legacy YAML key
+        iterations = _expand_matrix(matrix)
+        ts        = datetime.now().strftime("%y.%m.%d - %H:%M")
+        base_name = f"{ts} - {name}"
+
+        for iter_vars, iter_label in iterations:
+            if not app.running or stop_event.is_set():
+                break
+            result_name = base_name + (f" [{iter_label}]" if iter_label else "")
+            results = NavigationTester(
+                driver=driver, items=items,
+                screenshot_on_error=screenshot_on_error,
+                screenshot_dir=_SCREENSHOTS_DIR,
+                vars_context=iter_vars,
+                step_timeout=step_timeout,
+                stop_check=lambda: not app.running or stop_event.is_set(),
+                stop_on_error=stop_on_error).test_all()
+
+            with results_lock:
+                app.results.extend(results)
+            save_results(result_name, results, release, username)
+            app.root.after(0, app._refresh_results_list)
+
+            ok  = sum(1 for r in results if r.status == "OK")
+            err = sum(1 for r in results if r.status == "ERROR")
+            log.info(f"Done [{result_name}] — {ok} OK, {err} errors")
+            if err:
+                from adapters.notification.email_notifier import send_failure_alert
+                try:
+                    send_failure_alert(result_name, results)
+                except Exception as mail_exc:
+                    log.error(f"Email alert failed: {mail_exc}")
+                    from tkinter import messagebox
+                    app.root.after(0, lambda e=mail_exc: messagebox.showerror(
+                        "Email Alert", f"Failed to send alert email:\n{e}"))
+
+    except Exception as e:
+        log.error(f"Error [{name}]: {e}")
+    finally:
+        if timer is not None:
+            timer.cancel()
+        quit_browser(driver)
+        with results_lock:
+            if driver in app.drivers:
+                app.drivers.remove(driver)
+
+
 def run_automated_cli():
     from adapters.database.testcases import list_automated_testcases
 
@@ -338,14 +460,12 @@ def _run_single_tc_cli(name: str):
         ts      = datetime.now().strftime("%y.%m.%d - %H:%M")
         release = _read_release_from_page(driver)
 
-        from adapters.database.testcases import (
-            fetch_screenshot_on_error as _fetch_sce,
-            fetch_step_timeout as _fetch_st,
-            fetch_stop_on_error as _fetch_soe,
+        from adapters.database.settings import (
+            get_screenshot_on_error, get_step_timeout, get_stop_on_error,
         )
-        screenshot_on_error = _fetch_sce(name)
-        step_timeout        = _fetch_st(name)
-        stop_on_error       = _fetch_soe(name)
+        screenshot_on_error = get_screenshot_on_error()
+        step_timeout        = get_step_timeout()
+        stop_on_error       = get_stop_on_error()
         iterations = _expand_matrix(dict(meta.get("matrix") or {}))
 
         for iter_vars, iter_label in iterations:

@@ -74,3 +74,49 @@ def set_error_page_keywords(keywords: list[str]) -> None:
     set_setting("error_page_keywords", "\n".join(keywords))
 
 
+def get_screenshot_on_error() -> bool:
+    return get_setting("screenshot_on_error", "0") == "1"
+
+
+def set_screenshot_on_error(value: bool) -> None:
+    set_setting("screenshot_on_error", "1" if value else "0")
+
+
+def get_stop_on_error() -> bool:
+    return get_setting("stop_on_error", "0") == "1"
+
+
+def set_stop_on_error(value: bool) -> None:
+    set_setting("stop_on_error", "1" if value else "0")
+
+
+def get_run_timeout() -> int:
+    try:
+        return max(0, int(get_setting("run_timeout", "0")))
+    except ValueError:
+        return 0
+
+
+def set_run_timeout(minutes: int) -> None:
+    set_setting("run_timeout", str(max(0, minutes)))
+
+
+def get_step_timeout() -> int:
+    try:
+        return max(0, int(get_setting("step_timeout", "0")))
+    except ValueError:
+        return 0
+
+
+def set_step_timeout(seconds: int) -> None:
+    set_setting("step_timeout", str(max(0, seconds)))
+
+
+def get_parallel_execution() -> bool:
+    return get_setting("parallel_execution", "0") == "1"
+
+
+def set_parallel_execution(value: bool) -> None:
+    set_setting("parallel_execution", "1" if value else "0")
+
+

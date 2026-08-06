@@ -24,6 +24,8 @@ class ViewSettings:
         self._settings_email_frame        = self._build_email_panel(self.content_settings)
         self._settings_release_frame      = self._build_release_panel(self.content_settings)
         self._settings_testing_frame      = self._build_testing_panel(self.content_settings)
+        self._settings_execution_frame    = self._build_execution_panel(self.content_settings)
+        self._settings_automated_frame    = self._build_automated_panel(self.content_settings)
 
     # ------------------------------------------------------------------
     # Main home panel (all settings cards, alphabetically)
@@ -73,11 +75,13 @@ class ViewSettings:
                 w.bind("<Button-1>", lambda _, cmd=command: cmd())
                 w.bind("<MouseWheel>", lambda e: canvas.yview_scroll(-1 * (e.delta // 120), "units"))
 
+        _card("Automated",            "Choose which testcases run via --automated.",                self._show_settings_automated)
         _card("Backup",               "Save or restore the database.",                              self._show_settings_backup)
         _card("Categories",           "Manage categories for assigning testcases.",                 self._show_settings_categories)
         _card("E-Mail Alerts",        "SMTP settings for automated test failure alerts.",           self._show_settings_email_panel)
         _card("Error Page Detection", "Keywords checked in the page title to detect error pages.",  self._show_settings_error_page_detection)
         _card("Release Detection",    "CSS selector and regex for the release number.",              self._show_settings_release)
+        _card("Testing",              "Execution settings applied to every testcase run.",          self._show_settings_execution)
         _card("URL Presets",          "Saved URLs with login credentials.",                         self._show_settings_url_presets)
 
         return frame
@@ -202,6 +206,91 @@ class ViewSettings:
               self._show_settings_url_presets)
 
         return frame
+
+    def _build_automated_panel(self, parent: tk.Frame) -> tk.Frame:
+        from interfaces.style.style import SUB_SEL_BG, SUB_SEL_FG
+        frame = tk.Frame(parent, bg=BG)
+        inner = tk.Frame(frame, bg=BG)
+        inner.pack(fill=tk.BOTH, expand=True, padx=24, pady=24)
+
+        tk.Label(inner, text="Automated", bg=BG, fg=FG,
+                 font=(FONT, 13, "bold"), anchor="w").pack(anchor="w", pady=(0, 4))
+        tk.Frame(inner, bg=BORDER, height=1).pack(fill=tk.X, pady=(0, 10))
+
+        tk.Label(inner,
+                 text="Testcases on the right run automatically via --automated "
+                      "(e.g. a scheduled task).",
+                 bg=BG, fg=FG_SEC, font=(FONT, 10), anchor="w",
+                 wraplength=520, justify="left").pack(anchor="w", pady=(0, 12))
+
+        body = tk.Frame(inner, bg=BG)
+        body.pack(fill=tk.BOTH, expand=True)
+        body.columnconfigure(0, weight=1)
+        body.columnconfigure(2, weight=1)
+        body.rowconfigure(1, weight=1)
+
+        def _list_col(col, label):
+            tk.Label(col, text=label, bg=BG, fg=FG_SEC,
+                     font=(FONT, 9, "bold"), anchor="w").grid(row=0, column=0, sticky="w", pady=(0, 4))
+            lb = tk.Listbox(
+                col, bg=BG2, fg=FG,
+                selectbackground=SUB_SEL_BG, selectforeground=SUB_SEL_FG,
+                font=(FONT, 11), borderwidth=0, highlightthickness=1,
+                highlightbackground=BORDER,
+                activestyle="none", relief="flat", exportselection=False,
+                selectmode=tk.EXTENDED)
+            lb.grid(row=1, column=0, sticky="nsew")
+            return lb
+
+        left_col = tk.Frame(body, bg=BG)
+        left_col.grid(row=0, column=0, sticky="nsew")
+        left_col.columnconfigure(0, weight=1)
+        left_col.rowconfigure(1, weight=1)
+        self._auto_avail_listbox = _list_col(left_col, "Available")
+
+        mid = tk.Frame(body, bg=BG)
+        mid.grid(row=0, column=1, sticky="ns", padx=10)
+
+        to_right = tk.Label(mid, text="→", bg=BG2, fg=FG, font=(FONT, 13, "bold"),
+                            cursor="hand2", padx=10, pady=6,
+                            relief="flat", highlightthickness=1, highlightbackground=BORDER)
+        to_right.pack(pady=(24, 6))
+        to_right.bind("<Button-1>", lambda _: self._on_automated_move(True))
+
+        to_left = tk.Label(mid, text="←", bg=BG2, fg=FG, font=(FONT, 13, "bold"),
+                           cursor="hand2", padx=10, pady=6,
+                           relief="flat", highlightthickness=1, highlightbackground=BORDER)
+        to_left.pack()
+        to_left.bind("<Button-1>", lambda _: self._on_automated_move(False))
+
+        right_col = tk.Frame(body, bg=BG)
+        right_col.grid(row=0, column=2, sticky="nsew")
+        right_col.columnconfigure(0, weight=1)
+        right_col.rowconfigure(1, weight=1)
+        self._auto_selected_listbox = _list_col(right_col, "Automated")
+
+        self._auto_avail_listbox.bind("<Double-Button-1>", lambda _: self._on_automated_move(True))
+        self._auto_selected_listbox.bind("<Double-Button-1>", lambda _: self._on_automated_move(False))
+
+        return frame
+
+    def _refresh_automated_panel(self):
+        from adapters.database.testcases import list_testcases_with_automated
+        self._auto_avail_listbox.delete(0, tk.END)
+        self._auto_selected_listbox.delete(0, tk.END)
+        for name, automated in list_testcases_with_automated():
+            target = self._auto_selected_listbox if automated else self._auto_avail_listbox
+            target.insert(tk.END, name)
+
+    def _on_automated_move(self, to_automated: bool):
+        from adapters.database.testcases import update_automated
+        src = self._auto_avail_listbox if to_automated else self._auto_selected_listbox
+        names = [src.get(i) for i in src.curselection()]
+        if not names:
+            return
+        for name in names:
+            update_automated(name, to_automated)
+        self._refresh_automated_panel()
 
     def _build_categories_panel(self, parent: tk.Frame) -> tk.Frame:
         from interfaces.style.style import SUB_SEL_BG, SUB_SEL_FG
@@ -763,17 +852,130 @@ class ViewSettings:
         set_error_page_keywords(list(_DEFAULT_ERROR_PAGE_KEYWORDS))
         self._refresh_testing_panel()
 
+    # ------------------------------------------------------------------
+    # Testing execution panel (global run settings)
+    # ------------------------------------------------------------------
+
+    def _build_execution_panel(self, parent: tk.Frame) -> tk.Frame:
+        frame = tk.Frame(parent, bg=BG)
+        inner = tk.Frame(frame, bg=BG)
+        inner.pack(fill=tk.BOTH, expand=True, padx=24, pady=24)
+
+        tk.Label(inner, text="Testing", bg=BG, fg=FG,
+                 font=(FONT, 13, "bold"), anchor="w").pack(anchor="w", pady=(0, 4))
+        tk.Frame(inner, bg=BORDER, height=1).pack(fill=tk.X, pady=(0, 10))
+
+        tk.Label(inner, text="Execution settings applied to every testcase run.",
+                 bg=BG, fg=FG_SEC, font=(FONT, 10), anchor="w").pack(anchor="w", pady=(0, 12))
+
+        self._exec_sce_var      = tk.BooleanVar()
+        self._exec_soe_var      = tk.BooleanVar()
+        self._exec_parallel_var = tk.BooleanVar()
+
+        tk.Checkbutton(
+            inner, text="Screenshot on Error", variable=self._exec_sce_var,
+            bg=BG, fg=FG, selectcolor=BG2, activebackground=BG,
+            font=(FONT, 10), anchor="w"
+        ).pack(anchor="w", pady=(0, 4))
+
+        tk.Checkbutton(
+            inner, text="Stop on Error", variable=self._exec_soe_var,
+            bg=BG, fg=FG, selectcolor=BG2, activebackground=BG,
+            font=(FONT, 10), anchor="w"
+        ).pack(anchor="w", pady=(0, 4))
+
+        tk.Checkbutton(
+            inner, text="Run multiple testcases in parallel (instead of sequentially)",
+            variable=self._exec_parallel_var,
+            bg=BG, fg=FG, selectcolor=BG2, activebackground=BG,
+            font=(FONT, 10), anchor="w"
+        ).pack(anchor="w", pady=(0, 14))
+
+        def _row(label, unit):
+            row = tk.Frame(inner, bg=BG)
+            row.pack(fill=tk.X, pady=3)
+            tk.Label(row, text=label, bg=BG, fg=FG_SEC,
+                     font=(FONT, 10), width=14, anchor="w").pack(side=tk.LEFT)
+            e = tk.Entry(row, bg=BG2, fg=FG, font=(FONT, 10),
+                         insertbackground=ACCENT, relief="flat",
+                         highlightthickness=1, highlightbackground=BORDER, width=8)
+            e.pack(side=tk.LEFT, ipady=4)
+            tk.Label(row, text=unit, bg=BG, fg=FG_SEC,
+                     font=(FONT, 10)).pack(side=tk.LEFT, padx=(6, 0))
+            return e
+
+        self._exec_run_timeout_entry  = _row("Run Timeout",  "min")
+        self._exec_step_timeout_entry = _row("Step Timeout", "s")
+
+        btn_row = tk.Frame(inner, bg=BG)
+        btn_row.pack(anchor="w", pady=(18, 0))
+
+        save_btn = tk.Label(btn_row, text="Save", bg=ACCENT, fg="#ffffff",
+                            font=(FONT, 10, "bold"), cursor="hand2", padx=12, pady=6)
+        save_btn.pack(side=tk.LEFT)
+        save_btn.bind("<Button-1>", lambda _: self._on_execution_save())
+
+        self._exec_status_lbl = tk.Label(inner, text="", bg=BG, fg=FG_SEC,
+                                         font=(FONT, 10), anchor="w")
+        self._exec_status_lbl.pack(anchor="w", pady=(8, 0))
+
+        return frame
+
+    def _refresh_execution_panel(self):
+        from adapters.database.settings import (
+            get_screenshot_on_error, get_stop_on_error,
+            get_run_timeout, get_step_timeout, get_parallel_execution,
+        )
+        self._exec_sce_var.set(get_screenshot_on_error())
+        self._exec_soe_var.set(get_stop_on_error())
+        self._exec_parallel_var.set(get_parallel_execution())
+        self._exec_run_timeout_entry.delete(0, tk.END)
+        self._exec_run_timeout_entry.insert(0, str(get_run_timeout()))
+        self._exec_step_timeout_entry.delete(0, tk.END)
+        self._exec_step_timeout_entry.insert(0, str(get_step_timeout()))
+        self._exec_status_lbl.config(text="")
+
+    def _on_execution_save(self):
+        from adapters.database.settings import (
+            set_screenshot_on_error, set_stop_on_error,
+            set_run_timeout, set_step_timeout, set_parallel_execution,
+        )
+        set_screenshot_on_error(self._exec_sce_var.get())
+        set_stop_on_error(self._exec_soe_var.get())
+        set_parallel_execution(self._exec_parallel_var.get())
+        try:
+            rt = max(0, int(self._exec_run_timeout_entry.get().strip() or "0"))
+        except ValueError:
+            rt = 0
+        try:
+            st = max(0, int(self._exec_step_timeout_entry.get().strip() or "0"))
+        except ValueError:
+            st = 0
+        set_run_timeout(rt)
+        set_step_timeout(st)
+        self._exec_run_timeout_entry.delete(0, tk.END)
+        self._exec_run_timeout_entry.insert(0, str(rt))
+        self._exec_step_timeout_entry.delete(0, tk.END)
+        self._exec_step_timeout_entry.insert(0, str(st))
+        self._exec_status_lbl.config(text="Saved.", fg=ACCENT)
+
     def _hide_all_settings_panels(self):
         for f in (self._settings_main_home_frame,
                   self._settings_backup_frame, self._settings_presets_home_frame,
                   self._settings_categories_frame, self._settings_url_presets_frame,
                   self._settings_email_frame, self._settings_release_frame,
-                  self._settings_testing_frame):
+                  self._settings_testing_frame, self._settings_execution_frame,
+                  self._settings_automated_frame):
             f.pack_forget()
 
     def _show_settings_backup(self):
         self._hide_all_settings_panels()
         self._settings_backup_frame.pack(fill=tk.BOTH, expand=True)
+
+    def _show_settings_automated(self):
+        self._hide_all_settings_panels()
+        self._refresh_automated_panel()
+        self._settings_automated_frame.pack(fill=tk.BOTH, expand=True)
 
     def _show_settings_release(self):
         self._hide_all_settings_panels()
@@ -789,6 +991,11 @@ class ViewSettings:
         self._hide_all_settings_panels()
         self._refresh_testing_panel()
         self._settings_testing_frame.pack(fill=tk.BOTH, expand=True)
+
+    def _show_settings_execution(self):
+        self._hide_all_settings_panels()
+        self._refresh_execution_panel()
+        self._settings_execution_frame.pack(fill=tk.BOTH, expand=True)
 
     def _show_settings_presets_home(self):
         self._hide_all_settings_panels()
