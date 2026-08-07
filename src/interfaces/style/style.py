@@ -67,8 +67,9 @@ def apply_theme():
           selectbackground=[("readonly", BG2)],
           selectforeground=[("readonly", FG)])
     s.configure("TEntry", fieldbackground=BG2, foreground=FG,
-                borderwidth=0, padding=(10, 7), font=(MONO, 10),
-                insertcolor=ACCENT)
+                borderwidth=1, padding=(10, 7), font=(MONO, 10),
+                insertcolor=ACCENT,
+                bordercolor=BORDER, lightcolor=BORDER, darkcolor=BORDER)
     s.map("TEntry", fieldbackground=[("focus", "#f8fffe")])
     s.configure("Treeview", background=BG2, foreground=FG,
                 fieldbackground=BG2, borderwidth=0,
@@ -80,7 +81,8 @@ def apply_theme():
     s.configure("SubList.Treeview",
                 background=SUB_BG, fieldbackground=SUB_BG, foreground=FG,
                 rowheight=28, font=(FONT, 11),
-                borderwidth=0, relief="flat")
+                borderwidth=0, relief="flat",
+                bordercolor=SUB_BG, lightcolor=SUB_BG, darkcolor=SUB_BG)
     s.map("SubList.Treeview",
           background=[("selected", SUB_SEL_BG)],
           foreground=[("selected", SUB_SEL_FG)])
