@@ -1,7 +1,14 @@
+import re
 import tkinter as tk
 from tkinter import ttk
 
 from interfaces.style.style import BG, BG2, FG, FONT, RED
+
+_MATRIX_SUFFIX_RE = re.compile(r"\s*\[[^\]]*\]\s*$")
+
+
+def _strip_matrix_suffix(key: str) -> str:
+    return _MATRIX_SUFFIX_RE.sub("", key)
 
 
 class ViewPerformance:
@@ -68,7 +75,8 @@ class ViewPerformance:
         keys = list_testcase_keys()
         self.performance_listbox.delete(*self.performance_listbox.get_children())
         for key in keys:
-            self.performance_listbox.insert("", tk.END, iid=key, values=(key,))
+            self.performance_listbox.insert(
+                "", tk.END, iid=key, values=(_strip_matrix_suffix(key),))
 
         children = self.performance_listbox.get_children()
         if not children:

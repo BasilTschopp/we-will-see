@@ -172,15 +172,19 @@ def _expand_matrix(matrix: dict) -> list[tuple[dict, str]]:
 
 
 
-def run_test(app, tc_names: list[str], headless: bool = True):
+def run_test(app, tc_names: list[str], headless: bool = True, progress_win=None):
     from adapters.database.settings import get_parallel_execution
-    if len(tc_names) > 1 and get_parallel_execution():
-        _run_parallel(app, tc_names, headless)
-    else:
-        _run_sequential(app, tc_names, headless)
+    try:
+        if len(tc_names) > 1 and get_parallel_execution():
+            _run_parallel(app, tc_names, headless, progress_win)
+        else:
+            _run_sequential(app, tc_names, headless, progress_win)
+    finally:
+        if progress_win is not None:
+            progress_win.close()
 
 
-def _run_sequential(app, tc_names: list[str], headless: bool):
+def _run_sequential(app, tc_names: list[str], headless: bool, progress_win=None):
     import threading
     from adapters.browser.driver import start_browser, quit_browser
     from adapters.browser.login import login
@@ -248,6 +252,9 @@ def _run_sequential(app, tc_names: list[str], headless: bool):
         if not app.running:
             return
 
+        progress_key = ", ".join(tc_names)
+        progress_cb  = _make_progress_cb(progress_win, progress_key)
+
         release    = _read_release_from_page(app.driver)
         app.results = []
         for iter_vars, iter_label in iterations:
@@ -260,13 +267,16 @@ def _run_sequential(app, tc_names: list[str], headless: bool):
                                        vars_context=iter_vars,
                                        step_timeout=step_timeout,
                                        stop_check=lambda: not app.running,
-                                       stop_on_error=stop_on_error).test_all()
+                                       stop_on_error=stop_on_error,
+                                       progress_callback=progress_cb).test_all()
             app.results.extend(results)
             save_results(result_name, results, release, username)
             app.root.after(0, app._refresh_results_list)
 
             ok  = sum(1 for r in results if r.status == "OK")
             err = sum(1 for r in results if r.status == "ERROR")
+            if progress_win is not None:
+                progress_win.set_status(progress_key, ok, err)
             log.info(f"Done [{result_name}] — {ok} OK, {err} errors")
             if err:
                 from adapters.notification.email_notifier import send_failure_alert
@@ -290,7 +300,16 @@ def _run_sequential(app, tc_names: list[str], headless: bool):
         app.root.after(0, app._set_running, False)
 
 
-def _run_parallel(app, tc_names: list[str], headless: bool):
+def _make_progress_cb(progress_win, key: str):
+    """Binds a progress window + row key into a NavigationTester progress_callback."""
+    if progress_win is None:
+        return None
+    def _cb(idx, total, item):
+        progress_win.update_step(key, idx, total, item.description or item.method)
+    return _cb
+
+
+def _run_parallel(app, tc_names: list[str], headless: bool, progress_win=None):
     """Runs each selected testcase in its own browser session, concurrently."""
     import threading
     from adapters.database.settings import (
@@ -311,7 +330,7 @@ def _run_parallel(app, tc_names: list[str], headless: bool):
         threading.Thread(
             target=_run_single_tc_parallel,
             args=(app, name, headless, screenshot_on_error, stop_on_error,
-                  run_timeout, step_timeout, results_lock),
+                  run_timeout, step_timeout, results_lock, progress_win),
             daemon=True)
         for name in tc_names
     ]
@@ -328,7 +347,7 @@ def _run_parallel(app, tc_names: list[str], headless: bool):
 def _run_single_tc_parallel(app, name: str, headless: bool,
                             screenshot_on_error: bool, stop_on_error: bool,
                             run_timeout: int, step_timeout: int,
-                            results_lock) -> None:
+                            results_lock, progress_win=None) -> None:
     import threading
     from adapters.browser.driver import start_browser, quit_browser
     from adapters.browser.login import login
@@ -374,6 +393,8 @@ def _run_single_tc_parallel(app, name: str, headless: bool,
         ts        = datetime.now().strftime("%y.%m.%d - %H:%M")
         base_name = f"{ts} - {name}"
 
+        progress_cb = _make_progress_cb(progress_win, name)
+
         for iter_vars, iter_label in iterations:
             if not app.running or stop_event.is_set():
                 break
@@ -385,7 +406,8 @@ def _run_single_tc_parallel(app, name: str, headless: bool,
                 vars_context=iter_vars,
                 step_timeout=step_timeout,
                 stop_check=lambda: not app.running or stop_event.is_set(),
-                stop_on_error=stop_on_error).test_all()
+                stop_on_error=stop_on_error,
+                progress_callback=progress_cb).test_all()
 
             with results_lock:
                 app.results.extend(results)
@@ -394,6 +416,8 @@ def _run_single_tc_parallel(app, name: str, headless: bool,
 
             ok  = sum(1 for r in results if r.status == "OK")
             err = sum(1 for r in results if r.status == "ERROR")
+            if progress_win is not None:
+                progress_win.set_status(name, ok, err)
             log.info(f"Done [{result_name}] — {ok} OK, {err} errors")
             if err:
                 from adapters.notification.email_notifier import send_failure_alert
@@ -579,7 +603,8 @@ class NavigationTester:
                  vars_context: dict | None = None,
                  step_timeout: int = 0,
                  stop_check=None,
-                 stop_on_error: bool = False):
+                 stop_on_error: bool = False,
+                 progress_callback=None):
         self.driver  = driver
         self.items   = items
         self.results: list[NavigationResult] = []
@@ -589,6 +614,7 @@ class NavigationTester:
         self._step_timeout = step_timeout
         self._stop_check = stop_check
         self._stop_on_error = stop_on_error
+        self._progress_callback = progress_callback
 
     def _update_overlay(self, idx: int, total: int, item) -> None:
         try:
@@ -671,6 +697,11 @@ class NavigationTester:
             item.description = resolve_input_value(item.description, self._context)
             log.info(f"[{idx}/{total}] {item.method}: {item.description}")
             self._update_overlay(idx, total, item)
+            if self._progress_callback:
+                try:
+                    self._progress_callback(idx, total, item)
+                except Exception:
+                    pass
             handler = self._dispatch.get(item.method)
             if not handler:
                 continue

@@ -392,8 +392,15 @@ class ViewTesting:
             return
         names = list(sel)
         self._set_running(True)
+
+        progress_win = None
+        if headless:
+            from interfaces.view.progress_window import RunProgressWindow
+            progress_win = RunProgressWindow(self.root)
+
         threading.Thread(target=run_test,
-                         args=(self, names, headless), daemon=True).start()
+                         args=(self, names, headless, progress_win),
+                         daemon=True).start()
 
     def _on_stop(self):
         from adapters.browser.driver import quit_browser
