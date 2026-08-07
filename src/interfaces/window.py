@@ -114,37 +114,42 @@ class App(ViewTesting, ViewRecording, ViewResults, ViewPerformance, ViewSettings
         for w in self.content_frame.winfo_children():
             w.pack_forget()
 
-        if section == "testing":
-            self.sub_testing.pack(fill=tk.BOTH, expand=True)
-            self.content_testing.pack(fill=tk.BOTH, expand=True)
-            self._refresh_tc_list()
-        elif section == "record":
-            self.sub_record.pack(fill=tk.BOTH, expand=True)
-            self.content_record.pack(fill=tk.BOTH, expand=True)
-            self._refresh_record_presets()
-        elif section == "results":
-            self.sub_results.pack(fill=tk.BOTH, expand=True)
-            self.content_results.pack(fill=tk.BOTH, expand=True)
-            self._refresh_results_list()
-        elif section == "performance":
-            self.sub_performance.pack(fill=tk.BOTH, expand=True)
-            self.content_performance.pack(fill=tk.BOTH, expand=True)
-            self._refresh_performance_list()
-        elif section == "settings":
-            self.sub_settings.pack(fill=tk.BOTH, expand=True)
-            self.content_settings.pack(fill=tk.BOTH, expand=True)
-            self._settings_show_first()
-
-        if section == "settings" and prev_section != "settings":
-            try:
-                self._sub_sash_x = self.paned.sash_coord(0)[0]
-            except Exception:
-                self._sub_sash_x = 210
-            self.paned.forget(self.sub_frame)
-        elif section != "settings" and prev_section == "settings":
-            self.paned.forget(self.content_frame)
-            self.paned.add(self.sub_frame, minsize=140, width=getattr(self, "_sub_sash_x", 210))
-            self.paned.add(self.content_frame, minsize=300)
+        try:
+            if section == "testing":
+                self.sub_testing.pack(fill=tk.BOTH, expand=True)
+                self.content_testing.pack(fill=tk.BOTH, expand=True)
+                self._refresh_tc_list()
+            elif section == "record":
+                self.sub_record.pack(fill=tk.BOTH, expand=True)
+                self.content_record.pack(fill=tk.BOTH, expand=True)
+                self._refresh_record_presets()
+            elif section == "results":
+                self.sub_results.pack(fill=tk.BOTH, expand=True)
+                self.content_results.pack(fill=tk.BOTH, expand=True)
+                self._refresh_results_list()
+            elif section == "performance":
+                self.sub_performance.pack(fill=tk.BOTH, expand=True)
+                self.content_performance.pack(fill=tk.BOTH, expand=True)
+                self._refresh_performance_list()
+            elif section == "settings":
+                self.sub_settings.pack(fill=tk.BOTH, expand=True)
+                self.content_settings.pack(fill=tk.BOTH, expand=True)
+                self._settings_show_first()
+        finally:
+            # Keep the paned layout (sub_frame vs. content_frame) consistent
+            # with prev/section even if a section's refresh raised above —
+            # otherwise the sub_frame pane forgotten on entering "settings"
+            # never gets restored and the middle column stays gone for good.
+            if section == "settings" and prev_section != "settings":
+                try:
+                    self._sub_sash_x = self.paned.sash_coord(0)[0]
+                except Exception:
+                    self._sub_sash_x = 210
+                self.paned.forget(self.sub_frame)
+            elif section != "settings" and prev_section == "settings":
+                self.paned.forget(self.content_frame)
+                self.paned.add(self.sub_frame, minsize=140, width=getattr(self, "_sub_sash_x", 210))
+                self.paned.add(self.content_frame, minsize=300)
 
     def run(self):
         self.root.mainloop()

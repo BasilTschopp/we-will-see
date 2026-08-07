@@ -145,7 +145,7 @@ def fetch_performance(tc_key: str) -> list[tuple[str, float, float | None, float
     from adapters.database.connection import get_connection
     conn = get_connection()
     rows = conn.execute("""
-        SELECT run_name, release, MIN(timestamp) AS t_min, MAX(timestamp) AS t_max
+        SELECT run_name, MAX(release) AS release, MIN(timestamp) AS t_min, MAX(timestamp) AS t_max
         FROM testresults
         WHERE release != ''
         GROUP BY run_name
