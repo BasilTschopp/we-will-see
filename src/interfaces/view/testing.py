@@ -1,7 +1,7 @@
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog
 
-from interfaces.style.style import BG, BG2, FG, FG_SEC, ACCENT, BLUE, RED, BORDER, FONT, MONO
+from interfaces.style.style import BG, BG2, FG, FG_SEC, ACCENT, RED, BORDER, FONT, MONO
 from interfaces.helper.widgets import add_tooltip
 from interfaces.helper.utils import get_categories
 
@@ -9,7 +9,7 @@ from interfaces.helper.utils import get_categories
 class ViewTesting:
 
     def build_sub(self, parent: tk.Frame):
-        from interfaces.style.style import SUB_BG, SUB_SEL_BG, SUB_SEL_FG
+        from interfaces.style.style import SUB_BG, SUB_SEL_FG
         self.sub_testing = tk.Frame(parent, bg=SUB_BG)
 
         self._filter_cat_var = tk.StringVar(value="All")

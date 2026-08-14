@@ -1,6 +1,6 @@
 import sqlite3
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox, simpledialog
+from tkinter import filedialog, messagebox, simpledialog
 from datetime import datetime
 
 from interfaces.style.style import BG, BG2, FG, FG_SEC, ACCENT, BORDER, FONT, RED

@@ -4,7 +4,6 @@ from tkinter import ttk, messagebox
 
 from core.core import NavigationResult
 from interfaces.style.style import BG, BG2, FG, RED, FONT
-from interfaces.helper.widgets import add_tooltip
 
 
 class ViewResults:
@@ -195,7 +194,7 @@ class ViewResults:
         self._show_report_popup(path)
 
     def _show_report_popup(self, path: str):
-        from interfaces.style.style import BG2, BORDER, ACCENT
+        from interfaces.style.style import BORDER, ACCENT
         popup = tk.Toplevel(self.root)
         popup.withdraw()
         popup.overrideredirect(True)
