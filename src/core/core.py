@@ -85,7 +85,7 @@ def dom_fingerprint(driver) -> str:
                    document.querySelectorAll('*').length + '|' +
                    (document.title || '');
         """)
-        return hashlib.md5((result or "").encode()).hexdigest()
+        return hashlib.md5((result or "").encode(), usedforsecurity=False).hexdigest()
     except Exception:
         return ""
 
