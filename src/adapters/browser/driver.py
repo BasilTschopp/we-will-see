@@ -167,14 +167,18 @@ def _download_msedgedriver(major_version: int) -> str:
     cached = os.path.join(cache_dir, f"msedgedriver_{major_version}.exe")
     if os.path.isfile(cached):
         return cached
-    import urllib.request, zipfile, io
+    import urllib.request, urllib.parse, zipfile, io
     version_url = (f"https://msedgedriver.azureedge.net/"
                    f"LATEST_RELEASE_{major_version}_WINDOWS")
     try:
+        if urllib.parse.urlparse(version_url).scheme != "https":
+            raise ValueError(f"Refusing non-https scheme for {version_url!r}")
         with urllib.request.urlopen(version_url, timeout=10) as r:
             full_version = r.read().decode().strip()
         zip_url = (f"https://msedgedriver.azureedge.net/{full_version}/"
                    f"edgedriver_win64.zip")
+        if urllib.parse.urlparse(zip_url).scheme != "https":
+            raise ValueError(f"Refusing non-https scheme for {zip_url!r}")
         with urllib.request.urlopen(zip_url, timeout=60) as r:
             zip_data = r.read()
         with zipfile.ZipFile(io.BytesIO(zip_data)) as zf:
