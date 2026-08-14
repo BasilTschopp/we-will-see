@@ -284,7 +284,6 @@ def _run_sequential(app, tc_names: list[str], headless: bool, progress_win=None)
                     send_failure_alert(result_name, results)
                 except Exception as mail_exc:
                     log.error(f"Email alert failed: {mail_exc}")
-                    from tkinter import messagebox
                     app.root.after(0, lambda e=mail_exc: messagebox.showerror(
                         "Email Alert", f"Failed to send alert email:\n{e}"))
 
@@ -293,7 +292,6 @@ def _run_sequential(app, tc_names: list[str], headless: bool, progress_win=None)
     finally:
         if _timeout_timer is not None:
             _timeout_timer.cancel()
-        from adapters.browser.driver import quit_browser
         quit_browser(app.driver)
         app.driver  = None
         app.running = False
