@@ -37,7 +37,7 @@ def _read_release_from_page(driver) -> str:
         try:
             el = WebDriverWait(driver, 1).until(
                 EC.presence_of_element_located((By.CSS_SELECTOR, selector)))
-            log.info(f"_read_release_from_page: element found directly")
+            log.info("_read_release_from_page: element found directly")
         except Exception:
             el = None
 
