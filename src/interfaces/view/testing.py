@@ -4,6 +4,7 @@ from tkinter import ttk, messagebox, simpledialog
 from interfaces.style.style import BG, BG2, FG, FG_SEC, ACCENT, RED, BORDER, FONT, MONO
 from interfaces.helper.widgets import add_tooltip
 from interfaces.helper.utils import get_categories
+from core.core import log
 
 
 class ViewTesting:
@@ -372,8 +373,11 @@ class ViewTesting:
             old_yaml, category = fetch_testcase_yaml(self._current_tc_name)
             if old_yaml.rstrip() != content:
                 upsert_testcase(self._current_tc_name, content, category)
-        except Exception:
-            pass
+        except Exception as e:
+            log.error(f"Autosave failed for '{self._current_tc_name}': {e}")
+            messagebox.showerror(
+                "Autosave failed",
+                f"Changes to '{self._current_tc_name}' could not be saved:\n{e}")
 
     # ------------------------------------------------------------------
     # Test run
