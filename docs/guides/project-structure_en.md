@@ -24,17 +24,25 @@ we-will-see/
 │
 ├── docs/
 │   ├── conventions/
-│   │   ├── git-conventions.md          Commit format and Git rules
-│   │   └── python-conventions.md       Python code style
+│   │   ├── git-conventions_en.md       Commit format and Git rules (English)
+│   │   ├── git-conventions_de.md       Commit format and Git rules (German)
+│   │   ├── python-conventions_en.md    Python code style (English)
+│   │   └── python-conventions_de.md    Python code style (German)
 │   ├── env/
 │   │   └── example.env                 Environment template
 │   └── guides/
-│       ├── project-structure.md        Project structure (this file)
-│       ├── database.md                 Schema, engine config, encryption
-│       ├── execution.md                Test execution
-│       ├── performance.md              Performance notes
-│       ├── recorder.md                 Session recorder
-│       └── testcase.md                 Testcase format
+│       ├── project-structure_en.md     Project structure (this file, English)
+│       ├── project-structure_de.md     Project structure (this file, German)
+│       ├── database_en.md              Schema, engine config, encryption (English)
+│       ├── database_de.md              Schema, engine config, encryption (German)
+│       ├── execution_en.md             Test execution (English)
+│       ├── execution_de.md             Test execution (German)
+│       ├── performance_en.md           Performance notes (English)
+│       ├── performance_de.md           Performance notes (German)
+│       ├── recorder_en.md              Session recorder (English)
+│       ├── recorder_de.md              Session recorder (German)
+│       ├── testcase_en.md              Testcase format (English)
+│       └── testcase_de.md              Testcase format (German)
 │
 └── src/
     ├── main.py                         Application entry point

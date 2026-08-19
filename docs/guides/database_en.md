@@ -90,7 +90,7 @@ for the typed getters/setters. Email credentials stored here go through
 | `id` | PK | |
 | `name` | TEXT UNIQUE | Testcase name. |
 | `category` | TEXT | For the UI category filter. |
-| `yaml_text` | TEXT | The full YAML document (see `docs/guides/testcase.md`). |
+| `yaml_text` | TEXT | The full YAML document (see `docs/guides/testcase_en.md`). |
 | `automated` | INTEGER (bool) | Included in `--automated` headless runs. |
 | `comment` | TEXT | Free-text note (migrated in later; not in the original schema). |
 | `created`, `updated` | TEXT | Timestamps; `updated` bumped on every save. Renamed from `created_at`/`updated_at` by migration. |
@@ -119,7 +119,7 @@ run's step list.
 | `url`, `page_title` | TEXT | Page state at the time of the step. |
 | `method`, `description`, `element_text`, `source_url` | TEXT | Copied from the executed `NavigationItem`. |
 | `http_status` | TEXT | Not currently populated by the runner; reserved. |
-| `load_time_ms` | INTEGER | See `docs/guides/performance.md`. |
+| `load_time_ms` | INTEGER | See `docs/guides/performance_en.md`. |
 | `depth` | INTEGER | Crawl-depth metadata. |
 | `screenshot_path` | TEXT | Set when "Screenshot on error" is enabled and the step failed. Added by migration. |
 | `username` | TEXT | The login username used for the run. Added by migration. |
@@ -127,7 +127,7 @@ run's step list.
 
 Per-testcase execution settings (`screenshot_on_error`, `run_timeout`,
 `step_timeout`, `stop_on_error`) used to live as columns on `testcases`; a migration
-drops them now that these are global Settings values (see `docs/guides/execution.md`).
+drops them now that these are global Settings values (see `docs/guides/execution_en.md`).
 
 ## Encryption
 
