@@ -198,7 +198,8 @@ def _events_to_steps(events: list[dict], source_url: str, no_wait: bool = False)
                 steps.append({
                     "method": "assert_text", "url": "", "source_url": nav_source,
                     "description": f"Assert text: '{text[:40]}'",
-                    "selector": "", "element_text": "",
+                    "selector": _clean_selector(ev.get("selector", "")),
+                    "element_text": "",
                     "input_value": text, "submit_key": "",
                 })
             i += 1

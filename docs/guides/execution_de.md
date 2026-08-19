@@ -133,7 +133,7 @@ Single-Page-Anwendungen.
 | `table_row` | Klickt die erste Datenzeile einer Tabelle und prüft auf URL- oder DOM-Änderung |
 | `form_input` | Gibt einen Wert in ein Feld anhand CSS-Selektor ein; kann optional eine Submit-Taste senden; kann den eingegebenen Wert über `store_as` erfassen |
 | `click` | Klickt ein beliebiges Element anhand CSS-Selektor; kann als `optional` markiert werden, um bei fehlendem Element als `OK` übersprungen statt fehlgeschlagen zu werden |
-| `assert_text` | Prüft, dass ein String im Seitenkörper oder einem eingeschränkten Element vorkommt |
+| `assert_text` | Prüft, dass ein String innerhalb des durch `selector` gefundenen Elements vorkommt (`selector` erforderlich; fehlender Selector oder kein Treffer ergibt `ERROR`) |
 | `assert_present` | Prüft, dass ein zum Selektor passendes Element existiert und nicht-leeren Text hat |
 | `assert_absent` | Prüft, dass ein zum Selektor passendes Element *nicht* existiert oder leer ist |
 | `log_text` | Liest den Text eines Elements und zeichnet ihn im Ergebnis auf, ohne etwas zu prüfen |

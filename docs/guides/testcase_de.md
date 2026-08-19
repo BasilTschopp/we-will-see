@@ -89,7 +89,7 @@ werden mit folgenden Standardwerten in das `NavigationItem` eingelesen:
 | `selector` | `""` | CSS-Selektor zum Auffinden eines Elements. |
 | `input_value` | `""` | In ein Feld eingegebener Wert, oder die Wartezeit in Sekunden. |
 | `submit_key` | `""` | Nach der Eingabe gedrückte Taste (`enter`, `return`, `tab`, `escape`). |
-| `assert_text` | `""` | Text, der auf der Seite erwartet wird. |
+| `assert_text` | `""` | Text, der innerhalb des durch `selector` gefundenen Elements erwartet wird. |
 | `depth` | `0` | Crawl-Tiefe-Metadaten (informativ). |
 | `store_as` | `""` | Variablenname, unter dem ein erfasster Wert gespeichert wird (`form_input`, `read_value`), für spätere Verwendung mit `{{name}}`. |
 | `optional` | `false` | Für `click`: Wenn das Zielelement nicht gefunden wird, wird `OK` (übersprungen) statt `ERROR` aufgezeichnet. |
@@ -109,7 +109,7 @@ werden vom Runner erkannt.
 | `link` | Zu einer URL navigieren (behandelt `#`-Hash-Navigation und JS-/OAuth-Weiterleitungen). | `url` |
 | `click` | Ein Element per CSS-Selektor klicken. Über `optional` überspringbar. | `selector`, `source_url`, `optional` |
 | `form_input` | Einen Wert in ein Feld eingeben, optional mit einer Taste absenden; kann den eingegebenen Wert erfassen. | `selector`, `input_value`, `submit_key`, `source_url`, `store_as` |
-| `assert_text` | Prüft, dass Text auf der Seite oder innerhalb eines Elements vorhanden ist. | `assert_text` (oder `input_value`), optional `selector`, `source_url` |
+| `assert_text` | Prüft, dass Text innerhalb des durch `selector` gefundenen Elements vorhanden ist. | `assert_text` (oder `input_value`), `selector` (erforderlich), `source_url` |
 | `assert_present` | Prüft, dass ein zum Selektor passendes Element mit nicht-leerem Text existiert. | `selector`, `source_url` |
 | `assert_absent` | Prüft, dass ein zum Selektor passendes Element nicht existiert oder leer ist. | `selector`, `source_url` |
 | `log_text` | Liest den Text eines Elements in das Ergebnis, ohne etwas zu prüfen. | `selector` |
@@ -137,9 +137,10 @@ eine Schritt fehlgeschlagen zu werden.
 - **`input_value`** — bewusst mehrfach belegt: Es ist der eingegebene Text für
   `form_input` und die Anzahl Sekunden für `wait`.
 - **`assert_text`** — der `assert_text`-Handler akzeptiert den erwarteten Text
-  entweder in `assert_text` oder `input_value`; ist ein `selector` angegeben,
-  wird nur der Text dieses Elements durchsucht, andernfalls der gesamte
-  Seitenkörper.
+  entweder in `assert_text` oder `input_value`; `selector` ist erforderlich und
+  schränkt die Suche auf den Text dieses Elements ein. Ein fehlender `selector`,
+  oder ein `selector`, der innerhalb von 30s auf kein Element passt, wird als
+  `ERROR` aufgezeichnet, statt ersatzweise die gesamte Seite zu durchsuchen.
 - **`submit_key`** — wird case-insensitiv auf einen echten Tastendruck
   abgebildet. Nicht erkannte Werte werden ignoriert (der Wert wird trotzdem
   eingegeben, nur nicht abgesendet).

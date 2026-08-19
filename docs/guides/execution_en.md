@@ -101,7 +101,7 @@ After every click or navigation, the runner additionally waits until the DOM fin
 | `table_row` | Clicks the first data row of a table and checks for URL or DOM change |
 | `form_input` | Types a value into a CSS-selector field; optionally sends a submit key; can capture the typed value via `store_as` |
 | `click` | Clicks an arbitrary CSS-selector element; can be marked `optional` to skip (as `OK`) instead of failing when the element is missing |
-| `assert_text` | Asserts that a string appears in the page body or a scoped element |
+| `assert_text` | Asserts that a string appears inside the element matched by `selector` (required; missing selector or no match is an `ERROR`) |
 | `assert_present` | Asserts that an element matching a selector exists and has non-empty text |
 | `assert_absent` | Asserts that an element matching a selector does *not* exist, or is empty |
 | `log_text` | Reads an element's text and records it in the result, without asserting anything |

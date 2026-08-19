@@ -1217,23 +1217,23 @@ class NavigationTester:
                 self._record(item, status="ERROR",
                              error="No assert_text defined")
                 return
-            if item.selector:
-                try:
-                    # Wait up to 30s: async content (e.g. XML validation) may appear late
-                    el = WebDriverWait(self.driver, 30).until(
-                        EC.presence_of_element_located(
-                            (By.CSS_SELECTOR, item.selector)))
-                    body_text = (el.text
-                                 or el.get_attribute("textContent")
-                                 or "").strip()
-                except TimeoutException:
-                    body_text = ""
-                if not body_text:
-                    body_text = (self.driver.find_element(
-                        By.TAG_NAME, "body").text or "")
-            else:
-                body_text = self.driver.find_element(
-                    By.TAG_NAME, "body").text or ""
+            if not item.selector:
+                self._record(item, status="ERROR",
+                             error="No selector defined")
+                return
+            try:
+                # Wait up to 30s: async content (e.g. XML validation) may appear late
+                el = WebDriverWait(self.driver, 30).until(
+                    EC.presence_of_element_located(
+                        (By.CSS_SELECTOR, item.selector)))
+                body_text = (el.text
+                             or el.get_attribute("textContent")
+                             or "").strip()
+            except TimeoutException:
+                self._record(item, status="ERROR",
+                             error=f"Element '{item.selector}' not found",
+                             load_ms=int((time.time() - start) * 1000))
+                return
 
             load_ms = int((time.time() - start) * 1000)
             if search.lower() in body_text.lower():

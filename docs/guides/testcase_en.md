@@ -84,7 +84,7 @@ selects how the step is executed. The remaining fields are read into the
 | `selector` | `""` | CSS selector used to locate an element. |
 | `input_value` | `""` | Value typed into a field, or the wait duration in seconds. |
 | `submit_key` | `""` | Key pressed after input (`enter`, `return`, `tab`, `escape`). |
-| `assert_text` | `""` | Text expected to be present on the page. |
+| `assert_text` | `""` | Text expected to be present inside the element matched by `selector`. |
 | `depth` | `0` | Crawl-depth metadata (informational). |
 | `store_as` | `""` | Variable name to save a captured value under (`form_input`, `read_value`), for later `{{name}}` use. |
 | `optional` | `false` | For `click`: if the target element is not found, record `OK` (skipped) instead of `ERROR`. |
@@ -104,7 +104,7 @@ the runner.
 | `link` | Navigate to a URL (handles `#` hash navigation and JS/OAuth redirects). | `url` |
 | `click` | Click an element by CSS selector. Skippable via `optional`. | `selector`, `source_url`, `optional` |
 | `form_input` | Type a value into a field, optionally submit with a key; can capture the typed value. | `selector`, `input_value`, `submit_key`, `source_url`, `store_as` |
-| `assert_text` | Verify text is present on the page or inside an element. | `assert_text` (or `input_value`), optional `selector`, `source_url` |
+| `assert_text` | Verify text is present inside the element matched by `selector`. | `assert_text` (or `input_value`), `selector` (required), `source_url` |
 | `assert_present` | Verify an element matching a selector exists with non-empty text. | `selector`, `source_url` |
 | `assert_absent` | Verify an element matching a selector does not exist, or is empty. | `selector`, `source_url` |
 | `log_text` | Read an element's text into the result, without asserting. | `selector` |
@@ -129,8 +129,10 @@ silently skipped or merely failing that one step.
 - **`input_value`** — overloaded by design: it is the typed text for `form_input`,
   and the number of seconds for `wait`.
 - **`assert_text`** — the `assert_text` handler accepts the expected text in either
-  `assert_text` or `input_value`; if a `selector` is given, only that element's text
-  is searched, otherwise the whole page body.
+  `assert_text` or `input_value`; `selector` is required and scopes the search to
+  that element's text. A missing `selector`, or a `selector` that matches nothing
+  within 30s, is recorded as an `ERROR` rather than falling back to a page-wide
+  search.
 - **`submit_key`** — mapped case-insensitively to a real key press. Unrecognized
   values are ignored (the value is still typed, just not submitted).
 - **`store_as`** — writes the captured value into a run-scoped variable dict, which
