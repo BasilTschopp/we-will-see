@@ -4,7 +4,7 @@ A test case is stored as a single YAML document. It is the central interface of 
 tool: the recorder produces this format, the runner consumes it, and it is what a
 user edits when adjusting a test by hand. This document describes its structure.
 
-The relevant code is `usecases/testcase_reader.py` (parsing), `models/models.py`
+The relevant code is `usecases/testcase_reader.py` (parsing), `core/core.py`
 (the target `NavigationItem` structure) and `usecases/testcase_runner.py`
 (execution per step type).
 
@@ -27,7 +27,7 @@ testcases:
     description: "Click save"
 ```
 
-- **`meta`** — run-level parameters (target URL, browser, credentials, flags).
+- **`meta`** — run-level parameters (target URL, browser, credentials, flags, matrix).
 - **`testcases`** — an ordered list of steps. Each list entry becomes one
   `NavigationItem` and is executed in order.
 
@@ -48,9 +48,25 @@ win.
 | `username` | string | Optional login username. |
 | `password` | string | Optional login password. |
 | `private` | bool | Open the browser in private/incognito mode. |
+| `matrix` | mapping | Optional. Parameterizes the run: scalar values are constants, list values are expanded (Cartesian product) into one run per combination. See below. |
 
 > Credentials in `meta` are stored as written. They are only encrypted when saved as
 > a reusable *preset* (see the security documentation), not inside the YAML itself.
+
+### The `matrix` block
+
+```yaml
+meta:
+  url: https://example.com
+  matrix:
+    lang: [de, en]
+    env: staging
+```
+
+This example produces two runs (`en`/`de`), each with `env` fixed to `staging`. Inside
+steps, the current combination's values are available as `{{lang}}` / `{{env}}`
+placeholders (see `usecases/value_resolver.py`). The run/result name gets a
+`[...]`-suffix built from the varying keys.
 
 ## The `testcases` list
 
@@ -70,6 +86,10 @@ selects how the step is executed. The remaining fields are read into the
 | `submit_key` | `""` | Key pressed after input (`enter`, `return`, `tab`, `escape`). |
 | `assert_text` | `""` | Text expected to be present on the page. |
 | `depth` | `0` | Crawl-depth metadata (informational). |
+| `store_as` | `""` | Variable name to save a captured value under (`form_input`, `read_value`), for later `{{name}}` use. |
+| `optional` | `false` | For `click`: if the target element is not found, record `OK` (skipped) instead of `ERROR`. |
+| `var` | `""` | For `foreach` only: the stored variable (list or scalar) to iterate. Parsed into `foreach_var`. |
+| `steps` | `[]` | For `foreach` only: nested step list run once per iteration. Parsed into `sub_steps`. |
 
 Any field not present in the YAML simply takes its default; unknown extra fields are
 ignored.
@@ -82,19 +102,24 @@ the runner.
 | `method` | Purpose | Primary fields |
 |----------|---------|----------------|
 | `link` | Navigate to a URL (handles `#` hash navigation and JS/OAuth redirects). | `url` |
-| `click` | Click an element by CSS selector. | `selector`, `source_url` |
-| `form_input` | Type a value into a field, optionally submit with a key. | `selector`, `input_value`, `submit_key`, `source_url` |
+| `click` | Click an element by CSS selector. Skippable via `optional`. | `selector`, `source_url`, `optional` |
+| `form_input` | Type a value into a field, optionally submit with a key; can capture the typed value. | `selector`, `input_value`, `submit_key`, `source_url`, `store_as` |
 | `assert_text` | Verify text is present on the page or inside an element. | `assert_text` (or `input_value`), optional `selector`, `source_url` |
+| `assert_present` | Verify an element matching a selector exists with non-empty text. | `selector`, `source_url` |
+| `assert_absent` | Verify an element matching a selector does not exist, or is empty. | `selector`, `source_url` |
+| `log_text` | Read an element's text into the result, without asserting. | `selector` |
+| `read_value` | Read an element's text/value and optionally store it. | `selector`, `store_as` |
 | `wait` | Pause for a number of seconds. | `input_value` (seconds) |
 | `nav_click` | Click a navigation element matched by visible text. | `element_text`, `source_url` |
-| `modal` | Open a modal/dialog and confirm it appears. | `element_text`, `source_url` |
-| `tab` | Switch an ARIA tab and detect a DOM change. | `element_text`, `source_url` |
-| `pagination` | Click a pagination control (matched by aria-label). | `element_text`, `source_url` |
 | `table_row` | Click the first data row of a table. | `source_url` |
+| `foreach` | Run a nested step list once per item of a stored variable. | `var` (→ `foreach_var`), `steps` (→ `sub_steps`) |
+
+`modal`, `tab` and `pagination` from earlier versions have been removed; replicate
+them with `click`/`assert_present` and an explicit selector.
 
 A step whose `method` is missing or not in this list is recorded as an `ERROR`
-result at run time (no handler is dispatched), instead of being silently
-skipped.
+result and **aborts the whole run** (no handler is dispatched), instead of being
+silently skipped or merely failing that one step.
 
 ### Notes on specific fields
 
@@ -108,6 +133,10 @@ skipped.
   is searched, otherwise the whole page body.
 - **`submit_key`** — mapped case-insensitively to a real key press. Unrecognized
   values are ignored (the value is still typed, just not submitted).
+- **`store_as`** — writes the captured value into a run-scoped variable dict, which
+  `{{name}}` placeholders (in later steps' `description`, `assert_text`,
+  `input_value`, etc.) resolve against. See `usecases/value_resolver.py` for the full
+  placeholder syntax, including `{{random(min,max)}}` and `{{today±N}}`.
 
 ## How the recorder fills the fields
 
@@ -182,9 +211,13 @@ The format is intentionally lenient:
   warning), not an exception.
 - A missing or unknown `method` is recorded as an `ERROR` result at execution time
   rather than skipped, so a typo'd step type shows up in the report instead of
-  vanishing from it.
+  vanishing from it — but it also aborts the run at that point (see above), so the
+  remaining steps are not attempted.
 - Unknown extra fields (other than `method`) are ignored.
+- Enabling **Stop on error** in Settings makes *any* failing step abort the run, not
+  just an unknown `method`.
 
 This keeps the tool resilient: a single bad step or stale field degrades gracefully
-instead of aborting the whole run, while still surfacing the bad step as a visible
-failure.
+instead of crashing the process, while still surfacing the bad step as a visible
+failure and stopping further, likely-meaningless steps from running against an
+unexpected page state.

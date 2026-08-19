@@ -13,6 +13,15 @@ etc.) it covers element lookup plus any page load triggered to reach the source 
 
 The value is stored in milliseconds and displayed alongside each result.
 
+## Performance view
+`interfaces/view/performance.py` shows, per test case, the total run duration for
+each release and its percentage change versus the previous release and versus the
+first recorded release. Rows are highlighted when a change exceeds the configurable
+alert thresholds (Settings: performance threshold vs. previous / vs. first release,
+percent, `0` disables the corresponding check). The release label per run comes from
+a page element configured via Settings (CSS selector + optional regex), read right
+after login.
+
 ## What it is not
 The measured time is a wall-clock duration as seen by Selenium and includes:
 
