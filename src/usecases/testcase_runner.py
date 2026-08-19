@@ -613,6 +613,7 @@ class NavigationTester:
         self._stop_check = stop_check
         self._stop_on_error = stop_on_error
         self._progress_callback = progress_callback
+        self._abort = False  # set on a malformed step (missing/unknown method)
 
     def _update_overlay(self, idx: int, total: int, item) -> None:
         try:
@@ -701,10 +702,14 @@ class NavigationTester:
                 except Exception:
                     pass
             handler = self._dispatch.get(item.method)
-            if not handler:
-                continue
             results_before = len(self.results)
-            if self._step_timeout > 0:
+            if not handler:
+                err = ("Kein 'method'-Feld angegeben" if not item.method
+                       else f"Unbekannte Methode: '{item.method}'")
+                log.warning(f"Step method error: {err}")
+                self._record(item, status="ERROR", error=err)
+                self._abort = True
+            elif self._step_timeout > 0:
                 ex = ThreadPoolExecutor(max_workers=1)
                 future = ex.submit(handler, item)
                 try:
@@ -724,6 +729,10 @@ class NavigationTester:
                 except Exception as e:
                     self._record(item, status="ERROR",
                                  error=f"Unexpected error: {str(e)[:200]}")
+            if self._abort:
+                log.error("Testlauf abgebrochen: fehlerhafter Step "
+                          "(method fehlt oder unbekannt).")
+                break
             if (self._stop_on_error
                     and len(self.results) > results_before
                     and self.results[-1].status == "ERROR"):
@@ -764,10 +773,14 @@ class NavigationTester:
                 sub_copy.description = resolve_input_value(sub.description, self._context)
                 log.info(f"    {sub_copy.method}: {sub_copy.description}")
                 handler = self._dispatch.get(sub_copy.method)
-                if not handler:
-                    continue
                 results_before = len(self.results)
-                if self._step_timeout > 0:
+                if not handler:
+                    err = ("Kein 'method'-Feld angegeben" if not sub_copy.method
+                           else f"Unbekannte Methode: '{sub_copy.method}'")
+                    log.warning(f"Step method error: {err}")
+                    self._record(sub_copy, status="ERROR", error=err)
+                    self._abort = True
+                elif self._step_timeout > 0:
                     ex = ThreadPoolExecutor(max_workers=1)
                     future = ex.submit(handler, sub_copy)
                     try:
@@ -787,6 +800,11 @@ class NavigationTester:
                     except Exception as e:
                         self._record(sub_copy, status="ERROR",
                                      error=f"Unexpected error: {str(e)[:200]}")
+                if self._abort:
+                    log.error("Testlauf abgebrochen: fehlerhafter Step "
+                              "(method fehlt oder unbekannt).")
+                    stop_foreach = True
+                    break
                 if (self._stop_on_error
                         and len(self.results) > results_before
                         and self.results[-1].status == "ERROR"):

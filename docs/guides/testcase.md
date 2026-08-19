@@ -60,7 +60,7 @@ selects how the step is executed. The remaining fields are read into the
 
 | Field | Default | Used for |
 |-------|---------|----------|
-| `method` | `link` | Step type (see table below). |
+| `method` | *(required)* | Step type (see table below). Missing or misspelled → the step errors out at run time instead of silently defaulting. |
 | `url` | `""` | Target URL for `link` steps. |
 | `description` | `""` | Human-readable label shown in logs and results. |
 | `element_text` | `""` | Visible text used to locate an element. |
@@ -92,7 +92,9 @@ the runner.
 | `pagination` | Click a pagination control (matched by aria-label). | `element_text`, `source_url` |
 | `table_row` | Click the first data row of a table. | `source_url` |
 
-A step whose `method` is not in this list is skipped (no handler is dispatched).
+A step whose `method` is missing or not in this list is recorded as an `ERROR`
+result at run time (no handler is dispatched), instead of being silently
+skipped.
 
 ### Notes on specific fields
 
@@ -178,8 +180,11 @@ The format is intentionally lenient:
 - Missing optional fields take defaults.
 - Invalid YAML or a non-mapping top level yields an empty test case (logged as a
   warning), not an exception.
-- An unknown `method` is silently skipped at execution time.
-- Unknown extra fields are ignored.
+- A missing or unknown `method` is recorded as an `ERROR` result at execution time
+  rather than skipped, so a typo'd step type shows up in the report instead of
+  vanishing from it.
+- Unknown extra fields (other than `method`) are ignored.
 
 This keeps the tool resilient: a single bad step or stale field degrades gracefully
-instead of aborting the whole run.
+instead of aborting the whole run, while still surfacing the bad step as a visible
+failure.

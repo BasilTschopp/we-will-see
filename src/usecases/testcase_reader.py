@@ -19,7 +19,7 @@ def _parse_step(tc: dict) -> NavigationItem:
     sub = [_parse_step(s) for s in (tc.get("steps") or [])]
     return NavigationItem(
         url=tc.get("url", ""),
-        method=tc.get("method", "link"),
+        method=tc.get("method", ""),
         description=tc.get("description", ""),
         element_text=tc.get("element_text", ""),
         source_url=tc.get("source_url", ""),
