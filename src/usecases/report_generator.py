@@ -120,6 +120,12 @@ tr.error-row td  { background: #fff9f9; }
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }
+.td-num {
+    color: #8899a6;
+    white-space: nowrap;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
 .td-time {
     color: #8899a6;
     white-space: nowrap;
@@ -195,7 +201,7 @@ def generate_report(run_names: list[str], errors_only: bool = False) -> str:
         rows_html = ""
         screenshots_html = ""
 
-        for result in display_results:
+        for step_num, result in enumerate(display_results, start=1):
             time_str = result.timestamp.split(" ", 1)[1][:8] if " " in result.timestamp else ""
             is_error = result.status == "ERROR"
             row_class    = "error-row" if is_error else ""
@@ -211,6 +217,7 @@ def generate_report(run_names: list[str], errors_only: bool = False) -> str:
 
             rows_html += f"""
                     <tr class="{row_class}">
+                        <td class="td-num">{step_num}</td>
                         <td class="td-time">{time_str}</td>
                         <td><span class="{status_class}">{status_label}</span></td>
                         <td class="td-desc">{desc}</td>
@@ -241,6 +248,7 @@ def generate_report(run_names: list[str], errors_only: bool = False) -> str:
                 <table>
                     <thead>
                         <tr>
+                            <th style="text-align:right">#</th>
                             <th>Time</th>
                             <th>Status</th>
                             <th>Description</th>
