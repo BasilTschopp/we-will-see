@@ -597,6 +597,7 @@ class NavigationTester:
 
     def __init__(self, driver, items: list[NavigationItem],
                  screenshot_on_error: bool = False,
+                 screenshot_every_step: bool = False,
                  screenshot_dir: str = "",
                  vars_context: dict | None = None,
                  step_timeout: int = 0,
@@ -608,6 +609,7 @@ class NavigationTester:
         self.results: list[NavigationResult] = []
         self._context: dict = dict(vars_context or {})
         self._screenshot_on_error = screenshot_on_error
+        self._screenshot_every_step = screenshot_every_step
         self._screenshot_dir = screenshot_dir
         self._step_timeout = step_timeout
         self._stop_check = stop_check
@@ -1448,6 +1450,8 @@ class NavigationTester:
                      f"screenshot_dir={self._screenshot_dir!r}")
             if self._screenshot_on_error:
                 screenshot_path = self._take_screenshot(item)
+        if self._screenshot_every_step and not screenshot_path:
+            screenshot_path = self._take_screenshot(item)
         self.results.append(NavigationResult(
             status=status, error_detail=error, url=item.url,
             page_title=title, method=item.method,

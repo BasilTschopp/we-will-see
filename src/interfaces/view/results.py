@@ -193,7 +193,7 @@ class ViewResults:
             return
         self._show_report_popup(path)
 
-    def _show_report_popup(self, path: str):
+    def _show_report_popup(self, path: str, title: str = "Report created"):
         from interfaces.style.style import BORDER, ACCENT
         popup = tk.Toplevel(self.root)
         popup.withdraw()
@@ -204,7 +204,7 @@ class ViewResults:
         inner = tk.Frame(popup, bg=BG)
         inner.pack(fill=tk.BOTH, expand=True, padx=1, pady=1)
 
-        header = tk.Label(inner, text="Report created", bg=ACCENT, fg="#ffffff",
+        header = tk.Label(inner, text=title, bg=ACCENT, fg="#ffffff",
                           font=(FONT, 10, "bold"), anchor="w", padx=14, pady=10,
                           cursor="fleur")
         header.pack(fill=tk.X)

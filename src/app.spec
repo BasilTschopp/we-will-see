@@ -17,6 +17,7 @@ a = Analysis(
         "cryptography.fernet",
         "psycopg2",
         "psycopg2.extras",
+        "docx",
     ],
     hookspath=[],
     hooksconfig={},
