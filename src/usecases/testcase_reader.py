@@ -29,6 +29,8 @@ def _parse_step(tc: dict) -> NavigationItem:
         submit_key=tc.get("submit_key", ""),
         assert_text=tc.get("assert_text", ""),
         store_as=tc.get("store_as", ""),
+        target=tc.get("target", ""),
+        timeout=int(tc.get("timeout", 0) or 0),
         optional=bool(tc.get("optional", False)),
         foreach_var=tc.get("var", ""),
         sub_steps=sub,

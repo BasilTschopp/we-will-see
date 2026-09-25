@@ -20,6 +20,8 @@ class NavigationItem:
     submit_key: str = ""
     assert_text: str = ""
     store_as: str = ""
+    target: str = ""
+    timeout: int = 0
     optional: bool = False
     foreach_var: str = ""
     sub_steps: list = field(default_factory=list)

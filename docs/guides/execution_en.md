@@ -57,8 +57,17 @@ Step text fields (`description`, `assert_text`, `input_value`, …) may contain
 - `{{random(min,max)}}` — a random integer in the given range.
 - `{{today}}`, `{{today+N}}`, `{{today-N}}`, optionally `{{today+N|<strftime format>}}`
   — defaults to `%d.%m.%Y`.
-- `{{name}}` — a value previously captured with `store_as` (via `read_value` or
-  `form_input`) or a matrix variable.
+- `{{name}}` — a value previously captured with `store_as` (via `read_value`,
+  `form_input` or `pick_random`) or a matrix variable.
+
+Placeholders are also resolved in `selector`, `target`, `element_text`, `url` and
+`source_url`. This lets later steps address a randomly picked table row with
+`tbody > tr:nth-of-type({{row}})`.
+
+File uploads (`form_input` on a file field) can be templates: if a `.xml`,
+`.json`, `.csv` or `.txt` file contains `{{...}}` placeholders, a copy with the
+current values is written to a temp directory and uploaded instead. The file
+name stays the same and the original file is left untouched.
 
 ## Automated execution
 Test cases marked as Automated can be run headless without the GUI via:
@@ -108,6 +117,9 @@ After every click or navigation, the runner additionally waits until the DOM fin
 | `read_value` | Reads an element's text/value and, with `store_as`, saves it for later `{{...}}` use |
 | `wait` | Pauses execution for a given number of seconds |
 | `foreach` | Iterates a stored list value (`var`), running its nested `steps` once per item |
+| `pick_random` | Picks a random visible element matching the selector and stores its 1-based position via `store_as` |
+| `drag_drop` | Drags the `selector` element onto the `target` element (pointer drag, falling back to HTML5 drag events if nothing changed) |
+| `wait_until` | Repeats nested `steps` every `input_value` seconds until all pass or `timeout` is reached; logs each failed attempt |
 
 `modal`, `tab` and `pagination` steps from earlier versions are no longer supported;
 use `click`/`assert_present` with an explicit selector instead.

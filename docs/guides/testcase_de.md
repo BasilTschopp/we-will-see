@@ -91,7 +91,9 @@ werden mit folgenden Standardwerten in das `NavigationItem` eingelesen:
 | `submit_key` | `""` | Nach der Eingabe gedrückte Taste (`enter`, `return`, `tab`, `escape`). |
 | `assert_text` | `""` | Text, der innerhalb des durch `selector` gefundenen Elements erwartet wird. |
 | `depth` | `0` | Crawl-Tiefe-Metadaten (informativ). |
-| `store_as` | `""` | Variablenname, unter dem ein erfasster Wert gespeichert wird (`form_input`, `read_value`), für spätere Verwendung mit `{{name}}`. |
+| `store_as` | `""` | Variablenname, unter dem ein erfasster Wert gespeichert wird (`form_input`, `read_value`, `pick_random`), für spätere Verwendung mit `{{name}}`. |
+| `target` | `""` | Nur für `drag_drop`: CSS-Selektor des Elements, auf das gezogen wird. |
+| `timeout` | `0` | Nur für `wait_until`: maximale Wartezeit in Sekunden (`0` → 3600). |
 | `optional` | `false` | Für `click`: Wenn das Zielelement nicht gefunden wird, wird `OK` (übersprungen) statt `ERROR` aufgezeichnet. |
 | `var` | `""` | Nur für `foreach`: die gespeicherte Variable (Liste oder Skalar), über die iteriert wird. Wird zu `foreach_var` geparst. |
 | `steps` | `[]` | Nur für `foreach`: verschachtelte Schrittliste, die einmal pro Iteration ausgeführt wird. Wird zu `sub_steps` geparst. |
@@ -118,6 +120,9 @@ werden vom Runner erkannt.
 | `nav_click` | Klickt ein per sichtbarem Text gefundenes Navigationselement. | `element_text`, `source_url` |
 | `table_row` | Klickt die erste Datenzeile einer Tabelle. | `source_url` |
 | `foreach` | Führt eine verschachtelte Schrittliste einmal pro Element einer gespeicherten Variable aus. | `var` (→ `foreach_var`), `steps` (→ `sub_steps`) |
+| `pick_random` | Wählt zufällig ein sichtbares Element zum Selektor und speichert seine Position (ab 1) unter den Treffern. | `selector`, `store_as` |
+| `drag_drop` | Zieht ein Element auf ein anderes (z. B. zum Umsortieren einer Liste). Schlägt fehl, wenn sich die Seite dadurch nicht ändert. | `selector`, `target` |
+| `wait_until` | Führt die verschachtelten `steps` im Takt von `input_value` Sekunden (Standard 60) aus, bis alle bestehen oder `timeout` erreicht ist. Pro erfolglosem Versuch entsteht eine Zeile "Minute N: noch nicht erfüllt: …", nach Ablauf ein `ERROR`. Das Schritt-Timeout gilt hier nicht. | `steps`, `input_value`, `timeout` |
 
 `modal`, `tab` und `pagination` aus früheren Versionen wurden entfernt; sie
 werden stattdessen mit `click`/`assert_present` und einem expliziten Selektor
@@ -149,6 +154,32 @@ eine Schritt fehlgeschlagen zu werden.
   `assert_text`, `input_value` usw. späterer Schritte) aufgelöst werden. Siehe
   `usecases/value_resolver.py` für die vollständige Platzhaltersyntax,
   einschließlich `{{random(min,max)}}` und `{{today±N}}`.
+
+Platzhalter werden auch in `selector`, `target`, `element_text`, `url` und
+`source_url` aufgelöst. Zusammen mit `pick_random` lässt sich so ein zufälliger
+Tabelleneintrag wählen und in allen folgenden Schritten gleich ansprechen:
+
+```yaml
+- method: pick_random
+  selector: tbody > tr
+  store_as: zeile
+- method: read_value
+  selector: tbody > tr:nth-of-type({{zeile}}) > td
+  store_as: wagen_nr
+- method: drag_drop
+  selector: .liste > li:nth-of-type(2)
+  target: .liste > li:nth-of-type(1)
+```
+
+Hochgeladene Textdateien (`.xml`, `.json`, `.csv`, `.txt`) dürfen ebenfalls
+Platzhalter enthalten. So passt etwa eine XML-Vorlage mit
+`<Wheelsetnumber>{{radsatz_nr}}</Wheelsetnumber>` zu einem Radsatz, der erst
+während des Laufs ermittelt wird. Hochgeladen wird eine Kopie mit den
+eingesetzten Werten unter demselben Dateinamen.
+
+Die gespeicherte Position entspricht `nth-of-type` nur, wenn alle Treffer
+Geschwister desselben Typs sind. Andere Zeilen im selben `tbody` (etwa eine
+Legende) sollten daher per Klasse ausgeschlossen werden.
 
 ## Wie der Recorder die Felder befüllt
 

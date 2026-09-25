@@ -1,6 +1,9 @@
 import os
 import re
+import copy
 import time
+import hashlib
+import random
 from datetime import datetime
 
 
@@ -119,6 +122,36 @@ def _resolve_file_path(value: str) -> str:
     if os.path.isabs(value):
         return value
     return os.path.join(_FILES_DIR, value)
+
+
+_OVERLAY_ID = "__wws_overlay__"   # id of the in-page progress overlay
+
+_TEMPLATE_EXTENSIONS = (".xml", ".json", ".csv", ".txt")
+
+
+def _render_file_template(path: str, context: dict) -> str:
+    """Upload a copy with {{...}} placeholders resolved, if the file has any.
+
+    The copy keeps the original file name, since the application under test
+    may display or check it. Each copy gets its own temp dir so parallel runs
+    do not overwrite each other.
+    """
+    if not path.lower().endswith(_TEMPLATE_EXTENSIONS):
+        return path
+    try:
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+    except (OSError, UnicodeDecodeError):
+        return path
+    if "{{" not in text:
+        return path
+    import tempfile
+    rendered = os.path.join(tempfile.mkdtemp(prefix="wws-upload-"),
+                            os.path.basename(path))
+    with open(rendered, "w", encoding="utf-8", newline="") as f:
+        f.write(resolve_input_value(text, context))
+    log.info(f"  File template rendered: {os.path.basename(path)}")
+    return rendered
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
@@ -138,6 +171,32 @@ from core.core import (
 from usecases.testcase_reader import load_testcases
 from usecases.testcase_writer import save_testcase
 from usecases.testcase_recorder import SessionRecorder
+
+_HTML5_DND_JS = """
+const [src, tgt] = arguments;
+const dt = new DataTransfer();
+const fire = (el, type) => {
+    const r = el.getBoundingClientRect();
+    el.dispatchEvent(new DragEvent(type, {
+        bubbles: true, cancelable: true, dataTransfer: dt,
+        clientX: r.left + r.width / 2, clientY: r.top + r.height / 2,
+    }));
+};
+fire(src, 'dragstart');
+fire(tgt, 'dragenter');
+fire(tgt, 'dragover');
+fire(tgt, 'drop');
+fire(src, 'dragend');
+"""
+
+
+def _body_html_hash(driver) -> str:
+    try:
+        html = driver.execute_script("return document.body ? document.body.innerHTML : ''")
+        return hashlib.md5((html or "").encode(), usedforsecurity=False).hexdigest()
+    except Exception:
+        return ""
+
 
 def _expand_matrix(matrix: dict) -> list[tuple[dict, str]]:
     """Return one (vars_dict, label) tuple per matrix iteration.
@@ -614,6 +673,7 @@ class NavigationTester:
         self._stop_on_error = stop_on_error
         self._progress_callback = progress_callback
         self._abort = False  # set on a malformed step (missing/unknown method)
+        self._overlay_pos = (0, len(items))
 
     def _update_overlay(self, idx: int, total: int, item) -> None:
         try:
@@ -687,14 +747,20 @@ class NavigationTester:
             "read_value":        self._test_read_value,
             "wait":              self._test_wait,
             "foreach":           self._test_foreach,
+            "pick_random":       self._test_pick_random,
+            "drag_drop":         self._test_drag_drop,
+            "wait_until":        self._test_wait_until,
         }
+        # Deliberately long-running: must not be cut off by the step timeout.
+        untimed = {"wait_until"}
 
         for idx, item in enumerate(self.items, 1):
             if self._stop_check and self._stop_check():
                 log.info("Test run stopped.")
                 break
-            item.description = resolve_input_value(item.description, self._context)
+            item = self._resolve_item(item)
             log.info(f"[{idx}/{total}] {item.method}: {item.description}")
+            self._overlay_pos = (idx, total)
             self._update_overlay(idx, total, item)
             if self._progress_callback:
                 try:
@@ -709,7 +775,7 @@ class NavigationTester:
                 log.warning(f"Step method error: {err}")
                 self._record(item, status="ERROR", error=err)
                 self._abort = True
-            elif self._step_timeout > 0:
+            elif self._step_timeout > 0 and item.method not in untimed:
                 ex = ThreadPoolExecutor(max_workers=1)
                 future = ex.submit(handler, item)
                 try:
@@ -747,8 +813,17 @@ class NavigationTester:
         log.info(f"{'='*50}")
         return self.results
 
+    def _resolve_item(self, item: NavigationItem) -> NavigationItem:
+        # Resolve {{...}} on a copy: items are reused across matrix iterations
+        # and foreach loops, so the template must stay intact.
+        resolved = copy.copy(item)
+        for name in ("description", "selector", "element_text",
+                     "url", "source_url", "target"):
+            setattr(resolved, name,
+                    resolve_input_value(getattr(item, name), self._context))
+        return resolved
+
     def _test_foreach(self, item: NavigationItem) -> None:
-        import copy
         from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FuturesTimeout
 
         var_name  = item.foreach_var
@@ -769,8 +844,7 @@ class NavigationTester:
             log.info(f"  [foreach] {var_name} = {val!r}")
             stop_foreach = False
             for sub in item.sub_steps:
-                sub_copy = copy.copy(sub)
-                sub_copy.description = resolve_input_value(sub.description, self._context)
+                sub_copy = self._resolve_item(sub)
                 log.info(f"    {sub_copy.method}: {sub_copy.description}")
                 handler = self._dispatch.get(sub_copy.method)
                 results_before = len(self.results)
@@ -816,6 +890,68 @@ class NavigationTester:
 
         self._context[var_name] = var_value  # restore list
 
+    def _test_wait_until(self, item: NavigationItem) -> None:
+        """Repeat the nested steps every `input_value` seconds until all pass.
+
+        Only one result row per attempt is recorded (not the nested steps),
+        so a long wait stays readable in the report.
+        """
+        interval = float(item.input_value or 60)
+        timeout  = item.timeout or 3600
+        start    = time.time()
+        attempt  = 0
+        while True:
+            attempt += 1
+            attempt_start = time.time()
+            self._update_overlay(*self._overlay_pos, NavigationItem(
+                url="", method="wait_until",
+                description=f"{item.description} (Versuch {attempt})"))
+            failure, failed_step = "", ""
+            for sub in item.sub_steps:
+                sub_copy = self._resolve_item(sub)
+                handler  = self._dispatch.get(sub_copy.method)
+                if not handler:
+                    self._record(sub_copy, status="ERROR",
+                                 error=f"Unbekannte Methode: '{sub_copy.method}'")
+                    self._abort = True
+                    return
+                before = len(self.results)
+                try:
+                    handler(sub_copy)
+                except Exception as e:
+                    self._record(sub_copy, status="ERROR",
+                                 error=f"Unexpected error: {str(e)[:200]}")
+                attempt_results = self.results[before:]
+                del self.results[before:]
+                errors = [r for r in attempt_results if r.status == "ERROR"]
+                if errors:
+                    failed_step = sub_copy.description
+                    failure = f"{failed_step}: {errors[0].error_detail}"
+                    break
+
+            minutes = (time.time() - start) / 60
+            if not failure:
+                title = (f"Erfüllt nach {minutes:.1f} min (Versuch {attempt})")
+                self._record(item, status="OK", title=title,
+                             load_ms=int((time.time() - start) * 1000))
+                log.info(f"  OK — {title}")
+                return
+            if time.time() - start + interval > timeout:
+                self._record(item, status="ERROR",
+                             error=f"Nach {minutes:.1f} min ({attempt} Versuche) "
+                                   f"nicht erfüllt: {failure[:150]}",
+                             load_ms=int((time.time() - start) * 1000))
+                return
+            note = f"Minute {minutes:.0f}: noch nicht erfüllt: {failed_step}"
+            self._record(item, status="OK", title=note)
+            log.info(f"  {note}")
+
+            next_attempt = attempt_start + interval
+            while time.time() < next_attempt:
+                if self._stop_check and self._stop_check():
+                    return
+                time.sleep(1)
+
     def _navigate_and_find(self, item, selector):
         base = item.source_url or item.url.split("#")[0]
         self.driver.get(base)
@@ -848,7 +984,19 @@ class NavigationTester:
                         lambda d: hash_part in d.current_url)
                 except TimeoutException:
                     pass
-                self._wait_for_dom_stable(pre_fp=pre_fp)
+                try:
+                    WebDriverWait(self.driver, 5).until(
+                        lambda d: dom_fingerprint(d) != pre_fp)
+                except TimeoutException:
+                    # The SPA router ignored the hash change (e.g. a guard
+                    # stalled on an expired session): force a full load.
+                    log.info("  hash change not rendered, reloading page")
+                    self.driver.refresh()
+                    WebDriverWait(self.driver, 10).until(
+                        EC.presence_of_element_located((By.TAG_NAME, "body")))
+                # Wait until the route transition and its data loading are
+                # done; the first DOM change is often still the old page.
+                self._wait_for_dom_stable(timeout=10.0, stable_for=0.75)
             else:
                 self.driver.get(item.url)
                 WebDriverWait(self.driver, 10).until(
@@ -1048,7 +1196,8 @@ class NavigationTester:
                             "arguments[0].scrollIntoView({block:'center'});", el)
                         el.clear()
                     if is_file_input:
-                        resolved = _resolve_file_path(resolved)
+                        resolved = _render_file_template(
+                            _resolve_file_path(resolved), self._context)
                         try:
                             self.driver.execute_script(
                                 "arguments[0].style.cssText += "
@@ -1097,11 +1246,14 @@ class NavigationTester:
 
     def _find_by_text(self, text: str):
         escaped = text.replace("'", "\\'")
+        # The progress overlay shows the step description, which often equals
+        # element_text; never match (and click) the overlay itself.
+        not_overlay = f"[not(ancestor-or-self::*[@id='{_OVERLAY_ID}'])]"
         for tag in ("td", "div", "span", "button", "a", "li"):
             try:
                 els = self.driver.find_elements(
                     By.XPATH,
-                    f"//{tag}[normalize-space(.)='{escaped}']")
+                    f"//{tag}[normalize-space(.)='{escaped}']{not_overlay}")
                 for el in els:
                     if el.is_displayed():
                         return el
@@ -1112,7 +1264,7 @@ class NavigationTester:
             try:
                 els = self.driver.find_elements(
                     By.XPATH,
-                    f"//{tag}[contains(normalize-space(.), '{escaped}')]")
+                    f"//{tag}[contains(normalize-space(.), '{escaped}')]{not_overlay}")
                 for el in els:
                     if el.is_displayed():
                         return el
@@ -1221,29 +1373,46 @@ class NavigationTester:
                 self._record(item, status="ERROR",
                              error="No selector defined")
                 return
+            def _texts(driver):
+                texts = []
+                for el in driver.find_elements(By.CSS_SELECTOR, item.selector):
+                    try:
+                        texts.append((el.text or el.get_attribute("textContent")
+                                      or "").strip())
+                    except StaleElementReferenceException:
+                        continue
+                return texts
+
             try:
                 # Wait up to 30s: async content (e.g. XML validation) may appear late
-                el = WebDriverWait(self.driver, 30).until(
+                WebDriverWait(self.driver, 30).until(
                     EC.presence_of_element_located(
                         (By.CSS_SELECTOR, item.selector)))
-                body_text = (el.text
-                             or el.get_attribute("textContent")
-                             or "").strip()
             except TimeoutException:
                 self._record(item, status="ERROR",
                              error=f"Element '{item.selector}' not found",
                              load_ms=int((time.time() - start) * 1000))
                 return
+            # The element often exists before its data has loaded, so keep
+            # re-reading all matches until one contains the text.
+            try:
+                WebDriverWait(self.driver, 10).until(
+                    lambda d: any(search.lower() in t.lower() for t in _texts(d)))
+                found = True
+            except TimeoutException:
+                found = False
 
             load_ms = int((time.time() - start) * 1000)
-            if search.lower() in body_text.lower():
+            if found:
                 self._record(item, status="OK",
                              title=f"Text found: '{search[:40]}'",
                              load_ms=load_ms)
                 log.info(f"  OK ({load_ms}ms) — Text found")
             else:
+                actual = next((t for t in _texts(self.driver) if t), "")
                 self._record(item, status="ERROR",
-                             error=f"Text not found: '{search[:60]}'",
+                             error=f"Text not found: '{search[:60]}'"
+                                   f" (found: '{actual[:60]}')",
                              load_ms=load_ms)
         except Exception as e:
             self._record(item, status="ERROR",
@@ -1359,6 +1528,81 @@ class NavigationTester:
         except Exception as e:
             self._record(item, status="ERROR",
                          error=f"Read value '{item.selector}': {str(e)[:150]}",
+                         load_ms=int((time.time() - start) * 1000))
+
+    def _test_pick_random(self, item: NavigationItem):
+        # Stores the 1-based position of a random visible match, so later
+        # steps can target it with e.g. "tr:nth-of-type({{row}})".
+        start = time.time()
+        try:
+            WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, item.selector)))
+            elements = self.driver.find_elements(By.CSS_SELECTOR, item.selector)
+            visible = [i for i, el in enumerate(elements, 1) if el.is_displayed()]
+            load_ms = int((time.time() - start) * 1000)
+            if not visible:
+                self._record(item, status="ERROR",
+                             error=f"No visible element for '{item.selector}'",
+                             load_ms=load_ms)
+                return
+            pos = random.choice(visible)
+            if item.store_as:
+                self._context[item.store_as] = str(pos)
+            title = (f"Picked {pos} of {len(elements)}"
+                     + (f" → stored as '{item.store_as}'" if item.store_as else ""))
+            self._record(item, status="OK", title=title, load_ms=load_ms)
+            log.info(f"  OK ({load_ms}ms) — {title}")
+        except Exception as e:
+            self._record(item, status="ERROR",
+                         error=f"Pick random '{item.selector}': {str(e)[:150]}",
+                         load_ms=int((time.time() - start) * 1000))
+
+    def _test_drag_drop(self, item: NavigationItem):
+        start = time.time()
+        try:
+            if not item.selector or not item.target:
+                self._record(item, status="ERROR",
+                             error="drag_drop needs 'selector' and 'target'")
+                return
+            src = WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, item.selector)))
+            tgt = WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, item.target)))
+            pre_fp   = dom_fingerprint(self.driver)
+            pre_html = _body_html_hash(self.driver)
+            load_ms  = int((time.time() - start) * 1000)
+
+            # Pointer-based drag first (SortableJS fallback, dnd-kit, ...);
+            # small intermediate moves are needed to pass the drag threshold.
+            (ActionChains(self.driver)
+                .move_to_element(src).click_and_hold().pause(0.2)
+                .move_by_offset(0, 5).pause(0.1).move_by_offset(0, -5).pause(0.1)
+                .move_to_element(tgt).pause(0.3)
+                .move_to_element_with_offset(tgt, 0, -2).pause(0.3)
+                .release().perform())
+            self._wait_for_dom_stable(pre_fp=pre_fp)
+            mode = "pointer"
+
+            # A reorder keeps the fingerprint (same length, same element
+            # count), so compare the full markup instead.
+            if _body_html_hash(self.driver) == pre_html:
+                # Native HTML5 drag-and-drop is not triggered by WebDriver
+                # mouse actions in Chrome, so dispatch the events directly.
+                self.driver.execute_script(_HTML5_DND_JS, src, tgt)
+                self._wait_for_dom_stable(pre_fp=pre_fp)
+                mode = "html5"
+
+            if _body_html_hash(self.driver) == pre_html:
+                self._record(item, status="ERROR",
+                             error="Drag-and-drop had no effect on the page",
+                             load_ms=load_ms)
+                return
+            title = f"Dragged '{item.selector}' → '{item.target}' ({mode})"
+            self._record(item, status="OK", title=title, load_ms=load_ms)
+            log.info(f"  OK ({load_ms}ms) — {title}")
+        except Exception as e:
+            self._record(item, status="ERROR",
+                         error=f"Drag '{item.selector}': {str(e)[:150]}",
                          load_ms=int((time.time() - start) * 1000))
 
     def _test_wait(self, item: NavigationItem):

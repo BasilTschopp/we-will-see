@@ -69,8 +69,17 @@ zur Laufzeit aufgelöste `{{...}}`-Platzhalter enthalten:
 - `{{random(min,max)}}` — eine zufällige Ganzzahl im angegebenen Bereich.
 - `{{today}}`, `{{today+N}}`, `{{today-N}}`, optional `{{today+N|<strftime-Format>}}`
   — Standard ist `%d.%m.%Y`.
-- `{{name}}` — ein zuvor mit `store_as` erfasster Wert (über `read_value` oder
-  `form_input`) oder eine Matrix-Variable.
+- `{{name}}` — ein zuvor mit `store_as` erfasster Wert (über `read_value`,
+  `form_input` oder `pick_random`) oder eine Matrix-Variable.
+
+Platzhalter werden auch in `selector`, `target`, `element_text`, `url` und
+`source_url` aufgelöst. So lässt sich etwa eine zufällig gewählte Tabellenzeile
+in späteren Schritten über `tbody > tr:nth-of-type({{zeile}})` ansprechen.
+
+Datei-Uploads (`form_input` auf ein Datei-Feld) können Vorlagen sein: Enthält
+eine `.xml`-, `.json`-, `.csv`- oder `.txt`-Datei `{{...}}`-Platzhalter, wird
+eine Kopie mit den aktuellen Werten in ein temporäres Verzeichnis geschrieben
+und hochgeladen. Der Dateiname bleibt gleich, das Original bleibt unverändert.
 
 ## Automatisierte Ausführung
 Als "Automated" markierte Testfälle können headless ohne GUI ausgeführt werden
@@ -140,6 +149,9 @@ Single-Page-Anwendungen.
 | `read_value` | Liest Text/Wert eines Elements und speichert ihn mit `store_as` zur späteren `{{...}}`-Verwendung |
 | `wait` | Pausiert die Ausführung für eine angegebene Anzahl Sekunden |
 | `foreach` | Iteriert über einen gespeicherten Listenwert (`var`) und führt dessen verschachtelte `steps` einmal pro Element aus |
+| `pick_random` | Wählt zufällig ein sichtbares Element zum Selektor und speichert seine Position (ab 1) mit `store_as` |
+| `drag_drop` | Zieht das Element `selector` auf das Element `target` (Pointer-Drag, bei fehlender Wirkung HTML5-Drag-Events) |
+| `wait_until` | Wiederholt verschachtelte `steps` im Takt `input_value` (Sekunden), bis alle bestehen oder `timeout` erreicht ist; protokolliert jeden erfolglosen Versuch |
 
 `modal`-, `tab`- und `pagination`-Schritte aus früheren Versionen werden nicht
 mehr unterstützt; sie werden stattdessen mit `click`/`assert_present` und einem

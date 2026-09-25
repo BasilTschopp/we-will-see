@@ -86,7 +86,9 @@ selects how the step is executed. The remaining fields are read into the
 | `submit_key` | `""` | Key pressed after input (`enter`, `return`, `tab`, `escape`). |
 | `assert_text` | `""` | Text expected to be present inside the element matched by `selector`. |
 | `depth` | `0` | Crawl-depth metadata (informational). |
-| `store_as` | `""` | Variable name to save a captured value under (`form_input`, `read_value`), for later `{{name}}` use. |
+| `store_as` | `""` | Variable name to save a captured value under (`form_input`, `read_value`, `pick_random`), for later `{{name}}` use. |
+| `target` | `""` | For `drag_drop` only: CSS selector of the element to drop onto. |
+| `timeout` | `0` | For `wait_until` only: maximum wait in seconds (`0` → 3600). |
 | `optional` | `false` | For `click`: if the target element is not found, record `OK` (skipped) instead of `ERROR`. |
 | `var` | `""` | For `foreach` only: the stored variable (list or scalar) to iterate. Parsed into `foreach_var`. |
 | `steps` | `[]` | For `foreach` only: nested step list run once per iteration. Parsed into `sub_steps`. |
@@ -113,6 +115,9 @@ the runner.
 | `nav_click` | Click a navigation element matched by visible text. | `element_text`, `source_url` |
 | `table_row` | Click the first data row of a table. | `source_url` |
 | `foreach` | Run a nested step list once per item of a stored variable. | `var` (→ `foreach_var`), `steps` (→ `sub_steps`) |
+| `pick_random` | Pick a random visible element matching the selector and store its 1-based position among the matches. | `selector`, `store_as` |
+| `drag_drop` | Drag one element onto another (e.g. to reorder a list). Fails if the page does not change. | `selector`, `target` |
+| `wait_until` | Run the nested `steps` every `input_value` seconds (default 60) until all pass or `timeout` is reached. Each failed attempt adds a "Minute N: noch nicht erfüllt: …" row, running out adds an `ERROR`. The step timeout does not apply. | `steps`, `input_value`, `timeout` |
 
 `modal`, `tab` and `pagination` from earlier versions have been removed; replicate
 them with `click`/`assert_present` and an explicit selector.
@@ -139,6 +144,31 @@ silently skipped or merely failing that one step.
   `{{name}}` placeholders (in later steps' `description`, `assert_text`,
   `input_value`, etc.) resolve against. See `usecases/value_resolver.py` for the full
   placeholder syntax, including `{{random(min,max)}}` and `{{today±N}}`.
+
+Placeholders are also resolved in `selector`, `target`, `element_text`, `url` and
+`source_url`. Combined with `pick_random`, this picks a random table entry and
+addresses the same entry in every following step:
+
+```yaml
+- method: pick_random
+  selector: tbody > tr
+  store_as: row
+- method: read_value
+  selector: tbody > tr:nth-of-type({{row}}) > td
+  store_as: wagon_nr
+- method: drag_drop
+  selector: .list > li:nth-of-type(2)
+  target: .list > li:nth-of-type(1)
+```
+
+Uploaded text files (`.xml`, `.json`, `.csv`, `.txt`) may contain placeholders
+too. An XML template with `<Wheelsetnumber>{{radsatz_nr}}</Wheelsetnumber>`, for
+example, then matches a wheelset that is only determined during the run. The
+upload is a copy with the values filled in, under the same file name.
+
+The stored position only equals `nth-of-type` when all matches are siblings of
+the same type, so exclude other rows in the same `tbody` (such as a legend) by
+class.
 
 ## How the recorder fills the fields
 
