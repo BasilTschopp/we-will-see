@@ -1147,6 +1147,26 @@ class NavigationTester:
             self._record(item, status="ERROR", error=str(e)[:200],
                          load_ms=int((time.time() - start) * 1000))
 
+    def _clear_input(self, el):
+        # el.clear() only resets the DOM value; frameworks like Vue/Quasar keep
+        # the old model value and restore it on the next keystroke. Clear via
+        # real key events so the framework sees the change.
+        el.clear()
+        el.send_keys(Keys.CONTROL, "a")
+        el.send_keys(Keys.BACKSPACE)
+        try:
+            if el.get_attribute("value"):
+                self.driver.execute_script(
+                    "const el = arguments[0];"
+                    "const proto = el.tagName === 'TEXTAREA'"
+                    " ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;"
+                    "Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, '');"
+                    "el.dispatchEvent(new Event('input', {bubbles:true}));",
+                    el
+                )
+        except Exception:
+            pass
+
     def _test_form_input(self, item: NavigationItem):
         start = time.time()
         try:
@@ -1194,7 +1214,7 @@ class NavigationTester:
                     if not is_file_input:
                         self.driver.execute_script(
                             "arguments[0].scrollIntoView({block:'center'});", el)
-                        el.clear()
+                        self._clear_input(el)
                     if is_file_input:
                         resolved = _render_file_template(
                             _resolve_file_path(resolved), self._context)
