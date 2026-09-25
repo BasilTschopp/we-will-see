@@ -10,6 +10,7 @@ Collected events are polled via driver.execute_script and converted to
 NavigationItem / YAML testcase format.
 """
 
+import re
 import time
 import yaml
 from typing import Optional
@@ -311,6 +312,8 @@ class SessionRecorder:
                 no_wait: bool = False) -> str:
         steps = _events_to_steps(self._events, url or self.start_url, no_wait=no_wait)
         steps = _deduplicate(steps)
+        # Empty fields default to "" when read back, so leave them out.
+        steps = [{k: v for k, v in s.items() if v != ""} for s in steps]
         meta: dict = {"url": url or self.start_url}
         if browser and browser != "chrome":
             meta["browser"] = browser
@@ -319,8 +322,10 @@ class SessionRecorder:
         if password:
             meta["password"] = password
         doc = {"meta": meta, "testcases": steps}
-        return yaml.dump(doc, allow_unicode=True,
+        text = yaml.dump(doc, allow_unicode=True,
                          default_flow_style=False, sort_keys=False)
+        # Blank line before each step for readability.
+        return re.sub(r"^( *)- method:", r"\n\1- method:", text, flags=re.M)
 
     def event_count(self) -> int:
         return len(self._events)
