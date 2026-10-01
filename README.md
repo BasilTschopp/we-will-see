@@ -37,11 +37,11 @@ Python-based test automation for web applications.
 
 ## GUI
 
-<img src="data/readme/recording.jpg" width="600">
-<img src="data/readme/testing.jpg" width="600">
-<img src="data/readme/results.jpg" width="600">
-<img src="data/readme/performance.jpg" width="600">
-<img src="data/readme/settings.jpg" width="600">
+<img src="docs/readme/recording.jpg" width="600">
+<img src="docs/readme/testing.jpg" width="600">
+<img src="docs/readme/results.jpg" width="600">
+<img src="docs/readme/performance.jpg" width="600">
+<img src="docs/readme/settings.jpg" width="600">
 
 
 ### Example
