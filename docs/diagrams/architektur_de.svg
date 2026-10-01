@@ -1,0 +1,202 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="1235" viewBox="0 0 960 1235" font-family="Arial, Helvetica, sans-serif" font-size="13" fill="#1a1a1a">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#333"/>
+    </marker>
+    <style>
+      .stage { fill: #ffffff; stroke: #333; stroke-width: 1.4; }
+      .accent { fill: #eef4fb; stroke: #1f5fa8; stroke-width: 2.2; }
+      .lane { fill: #f3f3f3; stroke: #777; stroke-width: 1.2; stroke-dasharray: 5 3; }
+      .inner { fill: #ffffff; stroke: #888; stroke-width: 1; }
+      .sub { fill: #fafafa; stroke: #666; stroke-width: 1; }
+      .h { font-size: 16px; font-weight: bold; }
+      .h2 { font-size: 12.5px; font-weight: bold; }
+      .mod { font-family: Consolas, 'Courier New', monospace; font-size: 11.5px; fill: #555; }
+      .mono { font-family: Consolas, 'Courier New', monospace; font-size: 11.5px; }
+      .small { font-size: 11.5px; }
+      .note { font-size: 11px; fill: #555; }
+      .flow { font-size: 12px; font-style: italic; fill: #333; }
+      .edge { stroke: #333; stroke-width: 1.4; fill: none; marker-end: url(#arr); }
+      .rule { stroke: #bbb; stroke-width: 1; }
+      .phase { font-size: 13px; font-weight: bold; fill: #555; letter-spacing: 1px; }
+      .bracket { stroke: #999; stroke-width: 1.2; fill: none; }
+    </style>
+  </defs>
+
+  <rect width="960" height="1235" fill="#ffffff"/>
+
+  <!-- ============ Browser (Aufzeichnung) ============ -->
+  <rect class="lane" x="20" y="20" width="220" height="190" rx="6"/>
+  <text class="h" x="130" y="42" text-anchor="middle">Webbrowser</text>
+  <text class="note" x="130" y="58" text-anchor="middle">sichtbar, bedient durch Tester</text>
+  <rect class="inner" x="32" y="68" width="196" height="132" rx="4"/>
+  <text class="h2" x="130" y="86" text-anchor="middle">JS-Listener (injiziert)</text>
+  <text class="small" x="130" y="104" text-anchor="middle">click · change · mouseup</text>
+  <text class="small" x="130" y="120" text-anchor="middle">keydown · pushState</text>
+  <text class="small" x="130" y="140" text-anchor="middle">bestSelector():</text>
+  <text class="small" x="130" y="156" text-anchor="middle">#id → Attribut → DOM-Pfad</text>
+  <text class="small" x="130" y="176" text-anchor="middle">Puffer:</text>
+  <text class="mono" x="130" y="192" text-anchor="middle">window.__app_events__</text>
+
+  <!-- Browser <-> Recorder -->
+  <line class="edge" x1="320" y1="90" x2="242" y2="90"/>
+  <text class="note" x="280" y="82" text-anchor="middle">Injektion</text>
+  <line class="edge" x1="240" y1="150" x2="318" y2="150"/>
+  <text class="note" x="280" y="142" text-anchor="middle">Ereignisse</text>
+
+  <!-- ============ 1 Recorder ============ -->
+  <rect class="stage" x="320" y="20" width="580" height="190" rx="6"/>
+  <text class="h" x="335" y="44">1  Recorder</text>
+  <text class="mod" x="885" y="44" text-anchor="end">SessionRecorder · testcase_recorder.py</text>
+  <line class="rule" x1="335" y1="54" x2="885" y2="54"/>
+  <text x="335" y="80">• start(): JS-Listener per execute_script in die Seite injizieren</text>
+  <text x="335" y="106">• Hintergrund-Thread liest alle 0,8 s den Ereignispuffer aus und leert ihn</text>
+  <text x="335" y="132">• URL-Wechsel: navigate-Ereignis erzeugen, Listener neu injizieren</text>
+  <text x="335" y="158">• Passwortfelder werden bereits im Browser maskiert (***)</text>
+  <text x="335" y="184">• stop(): bei Schließen des Browsers restliche Ereignisse abholen</text>
+
+  <line class="edge" x1="610" y1="210" x2="610" y2="253"/>
+  <text class="flow" x="622" y="237">Ereignisliste: {type, selector, value, ts, url}</text>
+
+  <!-- ============ 2 Konverter ============ -->
+  <rect class="stage" x="320" y="255" width="580" height="180" rx="6"/>
+  <text class="h" x="335" y="279">2  Konverter</text>
+  <text class="mod" x="885" y="279" text-anchor="end">SessionRecorder.to_yaml()</text>
+  <line class="rule" x1="335" y1="289" x2="885" y2="289"/>
+
+  <rect class="sub" x="335" y="302" width="166" height="120" rx="4"/>
+  <text class="mono" x="418" y="321" text-anchor="middle" font-weight="bold">_events_to_steps</text>
+  <text class="small" x="418" y="341" text-anchor="middle">click → click / link</text>
+  <text class="small" x="418" y="357" text-anchor="middle">input → form_input</text>
+  <text class="small" x="418" y="373" text-anchor="middle">Enter/Tab → submit_key</text>
+  <text class="small" x="418" y="389" text-anchor="middle">Pause &gt; 1,5 s → wait</text>
+  <text class="small" x="418" y="405" text-anchor="middle">*** → leerer Wert</text>
+
+  <line class="edge" x1="501" y1="362" x2="525" y2="362"/>
+
+  <rect class="sub" x="527" y="302" width="166" height="120" rx="4"/>
+  <text class="mono" x="610" y="321" text-anchor="middle" font-weight="bold">_deduplicate</text>
+  <text class="small" x="610" y="345" text-anchor="middle">gleiche Folgeschritte</text>
+  <text class="small" x="610" y="361" text-anchor="middle">zusammenfassen</text>
+  <text class="small" x="610" y="381" text-anchor="middle">wiederholte link-Schritte</text>
+  <text class="small" x="610" y="397" text-anchor="middle">auf dieselbe URL entfernen</text>
+
+  <line class="edge" x1="693" y1="362" x2="717" y2="362"/>
+
+  <rect class="sub" x="719" y="302" width="166" height="120" rx="4"/>
+  <text class="mono" x="802" y="321" text-anchor="middle" font-weight="bold">yaml.dump</text>
+  <text class="small" x="802" y="345" text-anchor="middle">Dokument aus</text>
+  <text class="mono" x="802" y="361" text-anchor="middle">{meta, testcases}</text>
+  <text class="small" x="802" y="381" text-anchor="middle">leere Felder weglassen</text>
+  <text class="small" x="802" y="397" text-anchor="middle">meta: URL, Browser,</text>
+  <text class="small" x="802" y="413" text-anchor="middle">Zugangsdaten</text>
+
+  <line class="edge" x1="610" y1="435" x2="610" y2="483"/>
+  <text class="flow" x="622" y="464">YAML-Text</text>
+
+  <!-- ============ 3 Testfall ============ -->
+  <rect class="accent" x="320" y="485" width="580" height="170" rx="6"/>
+  <text class="h" x="335" y="509">3  Testfall (YAML)</text>
+  <text class="note" x="885" y="509" text-anchor="end">Schnittstelle zwischen Aufzeichnung und Wiedergabe</text>
+  <line class="rule" x1="335" y1="519" x2="885" y2="519"/>
+
+  <rect class="inner" x="335" y="528" width="260" height="116" rx="4"/>
+  <g class="mono" font-size="11px">
+    <text x="347" y="543">meta:</text>
+    <text x="347" y="556">&#160;&#160;url: https://app.example.com</text>
+    <text x="347" y="569">testcases:</text>
+    <text x="347" y="582">- method: click</text>
+    <text x="347" y="595">&#160;&#160;selector: button.new-order</text>
+    <text x="347" y="608">&#160;&#160;description: Neuer Auftrag</text>
+    <text x="347" y="621">- method: wait</text>
+    <text x="347" y="634">&#160;&#160;input_value: '2.3'</text>
+  </g>
+
+  <line class="edge" x1="597" y1="580" x2="656" y2="580" marker-start="url(#arr)"/>
+  <text class="note" x="627" y="572" text-anchor="middle">speichern</text>
+  <text class="note" x="627" y="596" text-anchor="middle">laden</text>
+
+  <!-- Datenbank-Zylinder -->
+  <path d="M660,540 L660,628 A110,12 0 0 0 880,628 L880,540" fill="#ffffff" stroke="#333" stroke-width="1.2"/>
+  <ellipse cx="770" cy="540" rx="110" ry="12" fill="#ffffff" stroke="#333" stroke-width="1.2"/>
+  <text class="h2" x="770" y="572" text-anchor="middle">Datenbank</text>
+  <text class="small" x="770" y="589" text-anchor="middle">SQLite / PostgreSQL</text>
+  <text class="mono" x="770" y="606" text-anchor="middle">Tabelle testcases</text>
+  <text class="note" x="770" y="624" text-anchor="middle">im GUI-Editor bearbeitbar</text>
+
+  <line class="edge" x1="610" y1="655" x2="610" y2="703"/>
+  <text class="flow" x="622" y="684">YAML-Text</text>
+
+  <!-- ============ 4 Parser ============ -->
+  <rect class="stage" x="320" y="705" width="580" height="100" rx="6"/>
+  <text class="h" x="335" y="729">4  Parser</text>
+  <text class="mod" x="885" y="729" text-anchor="end">load_testcases() · testcase_reader.py</text>
+  <line class="rule" x1="335" y1="739" x2="885" y2="739"/>
+  <text x="335" y="764">• yaml.safe_load: Dokument in meta und Schrittliste zerlegen</text>
+  <text x="335" y="790">• jeder Schritt → NavigationItem (rekursiv für foreach, wait_until)</text>
+
+  <line class="edge" x1="610" y1="805" x2="610" y2="853"/>
+  <text class="flow" x="622" y="834">NavigationItem[] + meta</text>
+
+  <!-- ============ Browser (Wiedergabe) ============ -->
+  <rect class="lane" x="20" y="855" width="220" height="200" rx="6"/>
+  <text class="h" x="130" y="877" text-anchor="middle">Webbrowser</text>
+  <text class="note" x="130" y="893" text-anchor="middle">headless oder sichtbar</text>
+  <rect class="inner" x="32" y="903" width="196" height="140" rx="4"/>
+  <text class="h2" x="130" y="923" text-anchor="middle">Selenium WebDriver</text>
+  <text class="small" x="130" y="941" text-anchor="middle">Chrome · Edge · Firefox</text>
+  <text class="small" x="130" y="965" text-anchor="middle">Zielanwendung (DOM)</text>
+  <text class="small" x="130" y="981" text-anchor="middle">Fenster 1920 × 1080</text>
+  <text class="small" x="130" y="1005" text-anchor="middle">Seitenlade-Timeout 30 s</text>
+
+  <!-- Runner <-> Browser -->
+  <line class="edge" x1="320" y1="930" x2="242" y2="930"/>
+  <text class="note" x="280" y="922" text-anchor="middle">Befehle</text>
+  <line class="edge" x1="240" y1="1000" x2="318" y2="1000"/>
+  <text class="note" x="280" y="992" text-anchor="middle">DOM-Zustand</text>
+
+  <!-- ============ 5 Runner ============ -->
+  <rect class="stage" x="320" y="855" width="580" height="200" rx="6"/>
+  <text class="h" x="335" y="879">5  Runner</text>
+  <text class="mod" x="885" y="879" text-anchor="end">NavigationTester · testcase_runner.py</text>
+  <line class="rule" x1="335" y1="889" x2="885" y2="889"/>
+  <text x="335" y="914">• Browser starten, optional Login, Cookie-Banner schließen</text>
+  <text x="335" y="938">• Matrix aus meta expandieren: ein Durchlauf pro Wertekombination</text>
+  <text x="335" y="962">• pro Schritt Platzhalter {{...}} auflösen (value_resolver)</text>
+  <text x="335" y="986">• Methode ausführen: link, click, form_input, assert_text, …</text>
+  <text x="335" y="1010">• Warten: WebDriverWait (10 s) und stabiler DOM (250 ms)</text>
+  <text x="335" y="1034">• Prüfen: Fehlerseite, leere Seite, fremder Host → OK / ERROR</text>
+
+  <line class="edge" x1="610" y1="1055" x2="610" y2="1103"/>
+  <text class="flow" x="622" y="1084">NavigationResult[]: Status, Ladezeit, Titel, Fehler</text>
+
+  <!-- ============ 6 Auswertung ============ -->
+  <rect class="stage" x="320" y="1105" width="580" height="110" rx="6"/>
+  <text class="h" x="335" y="1129">6  Auswertung</text>
+  <line class="rule" x1="335" y1="1139" x2="885" y2="1139"/>
+
+  <rect class="sub" x="335" y="1150" width="166" height="52" rx="4"/>
+  <text class="h2" x="418" y="1172" text-anchor="middle">Datenbank</text>
+  <text class="mono" x="418" y="1190" text-anchor="middle">Tabelle testresults</text>
+
+  <rect class="sub" x="527" y="1150" width="166" height="52" rx="4"/>
+  <text class="h2" x="610" y="1172" text-anchor="middle">HTML-Report</text>
+  <text class="mono" x="610" y="1190" text-anchor="middle">report_generator.py</text>
+
+  <rect class="sub" x="719" y="1150" width="166" height="52" rx="4"/>
+  <text class="h2" x="802" y="1172" text-anchor="middle">E-Mail bei ERROR</text>
+  <text class="small" x="802" y="1190" text-anchor="middle">SMTP</text>
+
+  <line class="edge" x1="501" y1="1176" x2="525" y2="1176"/>
+
+  <!-- ============ Phasen ============ -->
+  <path class="bracket" d="M912,20 L920,20 L920,435 L912,435"/>
+  <text class="phase" x="940" y="227" text-anchor="middle" transform="rotate(-90 940 227)">AUFZEICHNUNG</text>
+
+  <path class="bracket" d="M912,485 L920,485 L920,655 L912,655"/>
+  <text class="phase" x="940" y="570" text-anchor="middle" transform="rotate(-90 940 570)">ARTEFAKT</text>
+
+  <path class="bracket" d="M912,705 L920,705 L920,1215 L912,1215"/>
+  <text class="phase" x="940" y="960" text-anchor="middle" transform="rotate(-90 940 960)">WIEDERGABE</text>
+</svg>

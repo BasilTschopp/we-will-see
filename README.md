@@ -35,12 +35,13 @@ Python-based test automation for web applications.
 - Licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE).
 - Free use, modification, and distribution for non-commercial purposes only.
 
-## Mockups
+## GUI
 
-<img src="data/readme/recording.png" width="600">
-<img src="data/readme/testing.png" width="600">
-<img src="data/readme/results.png" width="600">
-<img src="data/readme/settings.png" width="600">
+<img src="data/readme/recording.jpg" width="600">
+<img src="data/readme/testing.jpg" width="600">
+<img src="data/readme/results.jpg" width="600">
+<img src="data/readme/performance.jpg" width="600">
+<img src="data/readme/settings.jpg" width="600">
 
 
 ### Example
